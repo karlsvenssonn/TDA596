@@ -1,5 +1,5 @@
 <footer>
-  <p>Group members: {{members_name_string}}</p>
+  <p>Group members: {{Karl Svensson, Fawzi Aiboud Nygren}}</p>
 </footer>
 </body>
 </html>

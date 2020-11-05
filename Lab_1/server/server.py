@@ -3,7 +3,7 @@
 # TDA596 - Lab 1
 # server/server.py
 # Input: Node_ID total_number_of_ID
-# Student: John Doe
+# Student: Karl Svensson, Fawzi Aiboud Nygren
 # ------------------------------------------------------------------------------------------------------
 import traceback
 import sys
@@ -158,7 +158,7 @@ try:
         # Handle requests:
         print "the action is", action
         
-        # If propagation action received is ADD, add new element to board
+        # If propagation action received is ADD, add new element to board and increment id_number
         if action == "ADD":
       	 	add_new_element_to_store(element_id, entry, True)
         	id_number = int(element_id) +1
@@ -169,6 +169,7 @@ try:
         else:
         	delete_option = request.forms.get('delete')
         	print "the delete option is ", delete_option
+
         	if delete_option == "0":
         		modify_element_in_store(element_id, entry, True)
 
