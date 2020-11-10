@@ -20,6 +20,7 @@ try:
 
     #board stores all message on the system 
     board = {0 : "Welcome to Distributed Systems Course"} 
+    id_number = 0
 
 
     # ------------------------------------------------------------------------------------------------------
@@ -31,6 +32,10 @@ try:
     def add_new_element_to_store(entry_sequence, element, is_propagated_call=False):
         global board, node_id
         success = False
+
+        if is_propagated_call:
+        	entry_sequence = int(entry_sequence)
+
         try:
            if entry_sequence not in board:
                 board[entry_sequence] = element
@@ -42,9 +47,14 @@ try:
     def modify_element_in_store(entry_sequence, modified_element, is_propagated_call = False):
         global board, node_id
         success = False
+
+        if is_propagated_call:
+        	entry_sequence = int(entry_sequence)
+
         try:
-            print("You need to implement the modify function")
-            success = True
+            if entry_sequence in board:
+            	board[entry_sequence] = modified_element
+            	success = True
         except Exception as e:
             print e
         return success
@@ -52,9 +62,14 @@ try:
     def delete_element_from_store(entry_sequence, is_propagated_call = False):
         global board, node_id
         success = False
+
+        if is_propagated_call:
+        	entry_sequence = int(entry_sequence)
+
         try:
-            print("You need to implement the delete function")
-            success = True
+            if entry_sequence in board:
+            	del board[entry_sequence]
+            	success = True
         except Exception as e:
             print e
         return success
@@ -84,11 +99,12 @@ try:
     def client_add_received():
         '''Adds a new element to the board
         Called directly when a user is doing a POST request on /board'''
-        global board, node_id
+        global board, node_id, id_number
         try:
             new_entry = request.forms.get('entry')
+            id_number = id_number + 1
+            element_id = id_number # you need to generate a entry number
 
-            element_id = 1 # you need to generate a entry number
             add_new_element_to_store(element_id, new_entry)
 
             # you should propagate something
@@ -123,13 +139,14 @@ try:
         print "the delete option is ", delete_option
         
         #call either delete or modify
-        modify_element_in_store(element_id, entry, False)
-        
-        delete_element_from_store(element_id, False)
+        if delete_option == "0":
+        	modify_element_in_store(element_id, entry, False)
+        elif delete_option == "1":
+        	delete_element_from_store(element_id, False)
         
         #propage to other nodes
         thread = Thread(target=propagate_to_vessels,
-                            args=('/propagate/DELETEorMODIFY/' + str(element_id), {'entry': entry}, 'POST'))
+                            args=('/propagate/DELETEorMODIFY/' + str(element_id), {'entry': entry, 'delete': delete_option}, 'POST'))
         thread.daemon = True
         thread.start()
 
@@ -139,7 +156,21 @@ try:
 	    #get entry from http body
         entry = request.forms.get('entry')
         print "the action is", action
-        
+        # Handle requests
+        # If propagation reveived action is ADD, add new element
+        if action == "ADD":
+        	add_new_element_to_store(element_id, entry, True)
+
+        # If propagation received action is MODIFYorDELETE
+        # Get delete_option value and act accordingly
+        else:
+
+        	delete_option = request.forms.get('delete')
+        	print "the delete option is ", delete_option
+        	if delete_option == "0":
+        		modify_element_in_store(element_id, entry, True)
+        	elif delete_option == "1":
+        		delete_element_from_store(element_id, True)
         # Handle requests
         # for example action == "ADD":
         #add_new_element_to_store(element_id, entry, True)
