@@ -10,6 +10,7 @@ import sys
 import time
 import json
 import argparse
+from random import randint
 from threading import Thread
 
 from bottle import Bottle, run, request, template
@@ -22,6 +23,10 @@ try:
     board = {0 : "Welcome to Distributed Systems Course"}
     #Init thhe first entry number
     id_number = 1
+    is_leader = False
+    node_id_random = 0
+    id_random_list = {}
+    neighbour = 0
     
     # ------------------------------------------------------------------------------------------------------
     # BOARD FUNCTIONS
@@ -32,7 +37,7 @@ try:
         global board, node_id
         success = False
 
-        #If this is a propagated call, typecast the reveicedstring entry_sequence top an int.
+        #If this is a propagated call, typecast the reveiced string 'entry_sequence' to an int.
         if is_propagated_call:
         	entry_sequence = int(entry_sequence)
 
@@ -49,7 +54,7 @@ try:
         global board, node_id
         success = False
 
-        #If this is a propagated call, typecast the reveicedstring entry_sequence top an int.
+        #If this is a propagated call, typecast the reveiced'string 'entry_sequence' to an int.
         if is_propagated_call:
         	entry_sequence = int(entry_sequence)
 
@@ -66,7 +71,7 @@ try:
         global board, node_id
         success = False
 
-        #If this is a propagated call, typecast the reveicedstring entry_sequence top an int.
+        #If this is a propagated call, typecast the reveiced string 'entry_sequence' to an int.
         if is_propagated_call:
         	entry_sequence = int(entry_sequence)
 
@@ -206,12 +211,33 @@ try:
                 if not success:
                     print "\n\nCould not contact vessel {}\n\n".format(vessel_id)
 
+    # ------------------------------------------------------------------------------------------------------
+    # LEADER ELECTION
+    # ------------------------------------------------------------------------------------------------------
+    # Assume ring topology, check in vessel_list, node_id+1 mod vessel_list.size. 
+    #@app.post('/leader-election/')
+	#def leader_election():
+    	#global vessel_list, node_id, node_id_random, id_random_list, neighbour
+
+    	#neighbour_list = request.forms.get('id_random_list')
+    	#if node_id_random in neighbour_list:
+    		#
+    		#
+    		#
+    	#else:
+    		#neighbour_list[node_id] = node_id_random
+    		#contact_vessel
+
+
+
+
+    	
         
     # ------------------------------------------------------------------------------------------------------
     # EXECUTION
     # ------------------------------------------------------------------------------------------------------
     def main():
-        global vessel_list, node_id, app
+        global vessel_list, node_id, app, node_id_random, id_random_list
 
         port = 80
         parser = argparse.ArgumentParser(description='Your own implementation of the distributed blackboard')
@@ -223,6 +249,14 @@ try:
         # We need to write the other vessels IP, based on the knowledge of their number
         for i in range(1, args.nbv+1):
             vessel_list[str(i)] = '10.1.0.{}'.format(str(i))
+
+        node_id_random = randint(0, 1000)
+        id_random_list[node_id] = node_id_random
+        print "Random id:" + str(node_id_random)
+        
+        # Create ring topology and assign right side neighbour.
+        neighbour = (node_id + 1) % len(vessel_list)
+        print "Neighbour node:" + str(neighbour)
 
         try:
             run(app, host=vessel_list[str(node_id)], port=port)
