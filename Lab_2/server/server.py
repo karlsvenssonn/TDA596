@@ -23,11 +23,19 @@ try:
     board = {0 : "Welcome to Distributed Systems Course"}
     #Init thhe first entry number
     id_number = 1
-    is_leader = False
+
+    leader_found = False
+
+    leader_node = 0
+
     node_id_random = 0
-    id_random_list = {}
+
+    random_id_list = dict()
+
     neighbour = 0
-    
+
+    neighbour_address = ''
+
     # ------------------------------------------------------------------------------------------------------
     # BOARD FUNCTIONS
     # ------------------------------------------------------------------------------------------------------
@@ -97,8 +105,9 @@ try:
 
     @app.get('/board')
     def get_board():
-        global board, node_id
+        global board, node_id, id_random_list
         print board
+
         return template('server/boardcontents_template.tpl',board_title='Vessel {}'.format(node_id), board_dict=sorted(board.iteritems()))
     
     #------------------------------------------------------------------------------------------------------
@@ -211,33 +220,79 @@ try:
                 if not success:
                     print "\n\nCould not contact vessel {}\n\n".format(vessel_id)
 
+
     # ------------------------------------------------------------------------------------------------------
     # LEADER ELECTION
     # ------------------------------------------------------------------------------------------------------
-    # Assume ring topology, check in vessel_list, node_id+1 mod vessel_list.size. 
-    #@app.post('/leader-election/')
-	#def leader_election():
-    	#global vessel_list, node_id, node_id_random, id_random_list, neighbour
+    # Assume ring topology, check in vessel_list, node_id+1 mod vessel_list.size.
+    
+    def start_election():
+		global neighbour_address, random_id_list
+		path = "/election"
+		# Should allow node 1 to wake up first, then node 2,3,4,5,6 etc.
+		time.sleep(node_id)
 
-    	#neighbour_list = request.forms.get('id_random_list')
-    	#if node_id_random in neighbour_list:
-    		#
-    		#
-    		#
-    	#else:
-    		#neighbour_list[node_id] = node_id_random
-    		#contact_vessel
+		requests.post('http://{}{}'.format(neighbour_address, path), data=random_id_list)
+
+    @app.post('/election')
+    def leader_elect():
+    	global node_id, node_id_random, neighbour_address, leader_found
+
+    	path = "/election"
+
+    	# Whole things goes to shit if you remove while loop :(
+    	while (leader_found != True):
+
+    		received = dict(request.forms)
+
+	    	if str(node_id_random) not in received:
+
+	    		# Never prints this for some reason...
+	    		if str(random_id_list) in received:
+    				print "List is full"
+    				# max rand number in received here, save variable
+    				leader_found = True
+    				
+
+	    		received[str(node_id)] = str(node_id_random)
+	    		print str(received)
+	    		requests.post('http://{}{}'.format(neighbour_address, path), data=received)
+
+	    # Can't put a print or leader_found = True here, crash..
 
 
 
 
-    	
-        
+
+    '''
+    @app.post('/election')
+	def leader_election():
+		global node_id, random_id_list, vessel_list, is_leader, leader_node, neighbour_address
+		#time.sleep(4.)
+		print "Leader election started"
+		
+		# Receive list from left side neighbour.
+		#received_list = request.forms
+		
+		# If node ID is in the received list, a complete round is completed.
+		#if node_id in received_list:
+			#random_id_list = dict(received_list)
+			# Get the highest random_id in the list
+			#highest_id = max(random_id_list, key = random_id_list.get)
+			#leader_node = vessel_list[str(highest_id)]
+			#print "Leader node is:" + str(leader_node)
+		
+		# Add random_id to the reveiced list and set it to right side neighbour.
+		#else:
+			#received_list[node_id] = random_id_list[node_id]
+			
+			#requests.post('http://{}{}'.format(neighbour_address, '/election'), data=received_list)
+  	'''
     # ------------------------------------------------------------------------------------------------------
     # EXECUTION
     # ------------------------------------------------------------------------------------------------------
     def main():
-        global vessel_list, node_id, app, node_id_random, id_random_list
+        global vessel_list, node_id, app, node_id_random, id_random_list, neighbour_address
 
         port = 80
         parser = argparse.ArgumentParser(description='Your own implementation of the distributed blackboard')
@@ -246,17 +301,27 @@ try:
         args = parser.parse_args()
         node_id = args.nid
         vessel_list = dict()
+
         # We need to write the other vessels IP, based on the knowledge of their number
         for i in range(1, args.nbv+1):
             vessel_list[str(i)] = '10.1.0.{}'.format(str(i))
-
-        node_id_random = randint(0, 1000)
-        id_random_list[node_id] = node_id_random
-        print "Random id:" + str(node_id_random)
         
-        # Create ring topology and assign right side neighbour.
-        neighbour = (node_id + 1) % len(vessel_list)
-        print "Neighbour node:" + str(neighbour)
+        # Assign a random number and this to a list random_id list.
+        node_id_random = randint(0, 1000)
+        random_id_list[str(node_id)] = str(node_id_random)
+        print "Current node ID, random ID: " + str(random_id_list)
+        
+        # Create ring topology by assigning its right side neighbour.
+   		# Save the neighbours address.
+        neighbour = node_id % len(vessel_list)+1
+        neighbour_address = '10.1.0.{}'.format(str(neighbour))
+        print "Neighbour node ID, IP: " + str(neighbour) + ", " + neighbour_address
+
+        # Give all nodes sufficient time to wake up, stops working 100% around 2-3 seconds on VM
+        time.sleep(5.)
+        thread = Thread(target=start_election)
+        thread.daemon=True
+        thread.start()
 
         try:
             run(app, host=vessel_list[str(node_id)], port=port)
