@@ -228,21 +228,50 @@ try:
     
     def start_election():
 		global neighbour_address, random_id_list
+<<<<<<< HEAD
 		path = "/election"
 		# Should allow node 1 to wake up first, then node 2,3,4,5,6 etc.
 		time.sleep(node_id)
 
+=======
+		print "Testing"
+		print str(neighbour_address)
+		print str(random_id_list)
+		time.sleep(2.)
+
+		path = "/election"
+		
+>>>>>>> refs/remotes/origin/main
 		requests.post('http://{}{}'.format(neighbour_address, path), data=random_id_list)
 
     @app.post('/election')
     def leader_elect():
     	global node_id, node_id_random, neighbour_address, leader_found
+<<<<<<< HEAD
+=======
+    	print"Hej"
+    	path = "/election"
+    	received = dict(request.forms)
+    	print str(received)
+    	# Crashes here
+    	while(not leader_found):
+	    	if not str(node_id) in received:
+	    		received[str(node_id)] = str(node_id_random)
+	    		print str(received)
+	    		
+	    		requests.post('http://{}{}'.format(neighbour_address, path), data=received)
+	    	else:
+	    		print "Here i am"
+	    		if str(node_id) in received:
+	    			leader_found = True
+>>>>>>> refs/remotes/origin/main
 
     	path = "/election"
 
     	# Whole things goes to shit if you remove while loop :(
     	while (leader_found != True):
 
+<<<<<<< HEAD
     		received = dict(request.forms)
 
 	    	if str(node_id_random) not in received:
@@ -263,6 +292,8 @@ try:
 
 
 
+=======
+>>>>>>> refs/remotes/origin/main
 
     '''
     @app.post('/election')
@@ -306,15 +337,25 @@ try:
         for i in range(1, args.nbv+1):
             vessel_list[str(i)] = '10.1.0.{}'.format(str(i))
         
+<<<<<<< HEAD
         # Assign a random number and this to a list random_id list.
         node_id_random = randint(0, 1000)
         random_id_list[str(node_id)] = str(node_id_random)
         print "Current node ID, random ID: " + str(random_id_list)
+=======
+        
+        
+        # Assign a random number and this to a list random_id list.
+        node_id_random = randint(0, 1000)
+        random_id_list[str(node_id)] = str(node_id_random)
+        print "Random id:" + str(node_id_random)
+>>>>>>> refs/remotes/origin/main
         
         # Create ring topology by assigning its right side neighbour.
    		# Save the neighbours address.
         neighbour = node_id % len(vessel_list)+1
         neighbour_address = '10.1.0.{}'.format(str(neighbour))
+<<<<<<< HEAD
         print "Neighbour node ID, IP: " + str(neighbour) + ", " + neighbour_address
 
         # Give all nodes sufficient time to wake up, stops working 100% around 2-3 seconds on VM
@@ -322,6 +363,17 @@ try:
         thread = Thread(target=start_election)
         thread.daemon=True
         thread.start()
+=======
+        print "Neighbour node:" + str(neighbour)
+        print "Neighbour address:" + neighbour_address
+
+        
+        time.sleep(4.)
+        thread = Thread(target=start_election)
+        thread.daemon=True
+        thread.start()
+		
+>>>>>>> refs/remotes/origin/main
 
         try:
             run(app, host=vessel_list[str(node_id)], port=port)
