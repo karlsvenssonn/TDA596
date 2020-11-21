@@ -239,17 +239,19 @@ try:
     def leader_elect():
     	global node_id, node_id_random, neighbour_address, leader_node
     	received = dict(request.forms)
+    	savedlist = dict()
     	path = "/election"
 
     	if str(node_id) not in received:
     		received[str(node_id)] = str(node_id_random)
-    		print "My list of currently received ID's: \n" + str(received)
+    		savedlist = received
     		requests.post('http://{}{}'.format(neighbour_address, path), data=received)
     	
     	# Replace 6 with number of args to clean up code, not sure how this works if a node crash, maybe count all nodes?
-    	if len(received) == 6:
+    	if len(savedlist) == 6:
     		print "Added myself"
-    		number = max(received, key = received.get)
+    		print "My list of currently received ID's: \n" + str(received)
+    		number = max(savedlist, key = savedlist.get)
     		print "Leader node is: " + (number) + " and value is " + (received[number])
 
     # ------------------------------------------------------------------------------------------------------
