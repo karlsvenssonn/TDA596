@@ -228,50 +228,22 @@ try:
     
     def start_election():
 		global neighbour_address, random_id_list
-<<<<<<< HEAD
+
 		path = "/election"
 		# Should allow node 1 to wake up first, then node 2,3,4,5,6 etc.
 		time.sleep(node_id)
 
-=======
-		print "Testing"
-		print str(neighbour_address)
-		print str(random_id_list)
-		time.sleep(2.)
-
-		path = "/election"
-		
->>>>>>> refs/remotes/origin/main
 		requests.post('http://{}{}'.format(neighbour_address, path), data=random_id_list)
 
     @app.post('/election')
     def leader_elect():
     	global node_id, node_id_random, neighbour_address, leader_found
-<<<<<<< HEAD
-=======
-    	print"Hej"
-    	path = "/election"
-    	received = dict(request.forms)
-    	print str(received)
-    	# Crashes here
-    	while(not leader_found):
-	    	if not str(node_id) in received:
-	    		received[str(node_id)] = str(node_id_random)
-	    		print str(received)
-	    		
-	    		requests.post('http://{}{}'.format(neighbour_address, path), data=received)
-	    	else:
-	    		print "Here i am"
-	    		if str(node_id) in received:
-	    			leader_found = True
->>>>>>> refs/remotes/origin/main
 
     	path = "/election"
 
     	# Whole things goes to shit if you remove while loop :(
     	while (leader_found != True):
 
-<<<<<<< HEAD
     		received = dict(request.forms)
 
 	    	if str(node_id_random) not in received:
@@ -288,12 +260,6 @@ try:
 	    		requests.post('http://{}{}'.format(neighbour_address, path), data=received)
 
 	    # Can't put a print or leader_found = True here, crash..
-
-
-
-
-=======
->>>>>>> refs/remotes/origin/main
 
     '''
     @app.post('/election')
