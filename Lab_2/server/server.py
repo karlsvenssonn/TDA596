@@ -24,7 +24,7 @@ try:
     #Init thhe first entry number
     id_number = 1
 
-    leader_found = False
+    leader_found = 0
 
     leader_node = 0
 
@@ -237,28 +237,29 @@ try:
 
     @app.post('/election')
     def leader_elect():
-    	global node_id, node_id_random, neighbour_address, leader_found
-
+    	global node_id, node_id_random, neighbour_address, leader_node
+    	received = dict(request.forms)
     	path = "/election"
 
-    	# Whole things goes to shit if you remove while loop :(
-    	while (leader_found != True):
+    	if str(node_id) not in received:
+    		received[str(node_id)] = str(node_id_random)
+    		print "My list of currently received ID's: \n" + str(received)
+    		requests.post('http://{}{}'.format(neighbour_address, path), data=received)
+    	
+    	if len(received) == 6:
+    		print "Added myself"
+    		number = max(received, key = received.get)
+    		print "Leader node is: " + (number) + " and value is " + (received[number])
+			#print "List is full"
+				# Find max of random values in dictionary
+				#leader_random_id = max(random_id_list, key = random_id_list.get)
+				#leader_node = vessel_list[str(leader_random_id)]
+				# max rand number in received here, save variable
 
-    		received = dict(request.forms)
+		#print "Leader node ID and (max) random ID" + str(leader_node) + " " + str(leader_random_id)
 
-	    	if str(node_id_random) not in received:
 
-	    		# Never prints this for some reason...
-	    		if str(random_id_list) in received:
-    				print "List is full"
-    				# max rand number in received here, save variable
-    				leader_found = True
-    				
-
-	    		received[str(node_id)] = str(node_id_random)
-	    		print str(received)
-	    		requests.post('http://{}{}'.format(neighbour_address, path), data=received)
-
+		#print "Loop done"
 	    # Can't put a print or leader_found = True here, crash..
 
     '''
