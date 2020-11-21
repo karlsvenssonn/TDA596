@@ -232,7 +232,7 @@ try:
 		path = "/election"
 		# Should allow node 1 to wake up first, then node 2,3,4,5,6 etc.
 		time.sleep(node_id)
-
+        # TODO: Use contact_vessel funtion instead with POST as arg.
 		requests.post('http://{}{}'.format(neighbour_address, path), data=random_id_list)
 
     @app.post('/election')
@@ -245,6 +245,7 @@ try:
     	if str(node_id) not in received:
     		received[str(node_id)] = str(node_id_random)
     		savedlist = received
+            # TODO: Use contact_vessel funtion instead with POST as arg.
     		requests.post('http://{}{}'.format(neighbour_address, path), data=received)
     	
     	# Replace 6 with number of args to clean up code, not sure how this works if a node crash, maybe count all nodes?
@@ -286,6 +287,7 @@ try:
 
         # Give all nodes sufficient time to wake up, stops working 100% around 2-3 seconds on VM
         time.sleep(5.)
+        # Init leader election
         thread = Thread(target=start_election)
         thread.daemon=True
         thread.start()
