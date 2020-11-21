@@ -246,46 +246,12 @@ try:
     		print "My list of currently received ID's: \n" + str(received)
     		requests.post('http://{}{}'.format(neighbour_address, path), data=received)
     	
+    	# Replace 6 with number of args to clean up code, not sure how this works if a node crash, maybe count all nodes?
     	if len(received) == 6:
     		print "Added myself"
     		number = max(received, key = received.get)
     		print "Leader node is: " + (number) + " and value is " + (received[number])
-			#print "List is full"
-				# Find max of random values in dictionary
-				#leader_random_id = max(random_id_list, key = random_id_list.get)
-				#leader_node = vessel_list[str(leader_random_id)]
-				# max rand number in received here, save variable
 
-		#print "Leader node ID and (max) random ID" + str(leader_node) + " " + str(leader_random_id)
-
-
-		#print "Loop done"
-	    # Can't put a print or leader_found = True here, crash..
-
-    '''
-    @app.post('/election')
-	def leader_election():
-		global node_id, random_id_list, vessel_list, is_leader, leader_node, neighbour_address
-		#time.sleep(4.)
-		print "Leader election started"
-		
-		# Receive list from left side neighbour.
-		#received_list = request.forms
-		
-		# If node ID is in the received list, a complete round is completed.
-		#if node_id in received_list:
-			#random_id_list = dict(received_list)
-			# Get the highest random_id in the list
-			#highest_id = max(random_id_list, key = random_id_list.get)
-			#leader_node = vessel_list[str(highest_id)]
-			#print "Leader node is:" + str(leader_node)
-		
-		# Add random_id to the reveiced list and set it to right side neighbour.
-		#else:
-			#received_list[node_id] = random_id_list[node_id]
-			
-			#requests.post('http://{}{}'.format(neighbour_address, '/election'), data=received_list)
-  	'''
     # ------------------------------------------------------------------------------------------------------
     # EXECUTION
     # ------------------------------------------------------------------------------------------------------
