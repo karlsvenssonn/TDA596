@@ -303,25 +303,16 @@ try:
         for i in range(1, args.nbv+1):
             vessel_list[str(i)] = '10.1.0.{}'.format(str(i))
         
-<<<<<<< HEAD
         # Assign a random number and this to a list random_id list.
         node_id_random = randint(0, 1000)
         random_id_list[str(node_id)] = str(node_id_random)
         print "Current node ID, random ID: " + str(random_id_list)
-=======
-        
-        
-        # Assign a random number and this to a list random_id list.
-        node_id_random = randint(0, 1000)
-        random_id_list[str(node_id)] = str(node_id_random)
-        print "Random id:" + str(node_id_random)
->>>>>>> refs/remotes/origin/main
         
         # Create ring topology by assigning its right side neighbour.
    		# Save the neighbours address.
         neighbour = node_id % len(vessel_list)+1
         neighbour_address = '10.1.0.{}'.format(str(neighbour))
-<<<<<<< HEAD
+
         print "Neighbour node ID, IP: " + str(neighbour) + ", " + neighbour_address
 
         # Give all nodes sufficient time to wake up, stops working 100% around 2-3 seconds on VM
@@ -329,17 +320,7 @@ try:
         thread = Thread(target=start_election)
         thread.daemon=True
         thread.start()
-=======
-        print "Neighbour node:" + str(neighbour)
-        print "Neighbour address:" + neighbour_address
 
-        
-        time.sleep(4.)
-        thread = Thread(target=start_election)
-        thread.daemon=True
-        thread.start()
-		
->>>>>>> refs/remotes/origin/main
 
         try:
             run(app, host=vessel_list[str(node_id)], port=port)
