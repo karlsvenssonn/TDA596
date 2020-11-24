@@ -36,6 +36,8 @@ try:
 
     neighbour_address = ''
 
+    leader_node_ip = ''
+
     # ------------------------------------------------------------------------------------------------------
     # BOARD FUNCTIONS
     # ------------------------------------------------------------------------------------------------------
@@ -117,19 +119,25 @@ try:
     def client_add_received():
         '''Adds a new element to the board
         Called directly when a user is doing a POST request on /board'''
-        global board, node_id, id_number
+        global board, node_id, id_number, leader_node_ip
 
         try:
             new_entry = request.forms.get('entry')
             
-            add_new_element_to_store(id_number, new_entry)
+            #add_new_element_to_store(id_number, new_entry)
             
             # Propagate action to all other nodes:
-            thread = Thread(target=propagate_to_vessels,
-                            args=('/propagate/ADD/' + str(id_number), {'entry': new_entry}, 'POST'))
-            thread.daemon = True
-            thread.start()
-            id_number = id_number +1
+            #thread = Thread(target=propagate_to_vessels,
+            #                args=('/propagate/ADD/' + str(id_number), {'entry': new_entry}, 'POST'))
+            #thread.daemon = True
+            #thread.start()
+            print str(leader_node_ip)
+            #thread = Thread(target=contact_vessel, 
+            #				args=(leader_node_ip, '/leader/add', {'entry' : new_entry}, 'POST'))
+            #thread.deamon = True
+            #thread.start()
+            requests.post('http://{}{}'.format(leader_node_ip, 'leader/add'), data=new_entry)
+            
             return True
         except Exception as e:
             print e
@@ -189,7 +197,18 @@ try:
 
         	elif delete_option == "1":
         		delete_element_from_store(element_id, True)
- 
+ 	
+ 	@app.post('/leader/add')
+ 	def leader_add():
+ 		global id_number
+
+ 		new_entry = request.forms.get('entry')
+ 		print "Leder received is:" + action
+ 		add_new_element_to_store(id_number, entry)
+ 		
+        propagate_to_vessels('/propagate/ADD/' + str(id_number), {'entry': new_entry}, 'POST')
+        id_number = id_number + 1
+
     # ------------------------------------------------------------------------------------------------------
     # DISTRIBUTED COMMUNICATIONS FUNCTIONS
     # ------------------------------------------------------------------------------------------------------
@@ -239,21 +258,37 @@ try:
     def leader_elect():
     	global node_id, node_id_random, neighbour_address, leader_node
     	received = dict(request.forms)
-    	savedlist = dict()
     	path = "/election"
+
 
     	if str(node_id) not in received:
     		received[str(node_id)] = str(node_id_random)
-    		savedlist = received
+
+    		print "Added:" + str(node_id) + "Sent to:" + str(neighbour_address)
+    		print "My list of currently received ID's: \n" + str(received)
             # TODO: Use contact_vessel funtion instead with POST as arg.
     		requests.post('http://{}{}'.format(neighbour_address, path), data=received)
     	
     	# Replace 6 with number of args to clean up code, not sure how this works if a node crash, maybe count all nodes?
-    	if len(savedlist) == 6:
-    		print "Added myself"
+    	#if len(savedlist) == 6:
+    	elif str(node_id) in received:
+    		
     		print "My list of currently received ID's: \n" + str(received)
-    		number = max(savedlist, key = savedlist.get)
-    		print "Leader node is: " + (number) + " and value is " + (received[number])
+    		leader_node = max(received, key = received.get)
+
+    		print "Leader node is: " + (leader_node) + " and value is " + (received[leader_node])
+    		
+    		thread = Thread(target = propagate_to_vessels, args=('/leader_prop/leader', {'leader':leader_node}))
+    		thread.deamon = True
+    		thread.start()
+    			
+    @app.post('/leader_prop/leader')
+    def leader_propagation():
+    	global leader_node_ip
+
+    	leader_node_ip = '10.0.1.{}'.format(request.forms.get('leader'))
+    	print 'Leader IP:' + str(leader_node_ip)
+
 
     # ------------------------------------------------------------------------------------------------------
     # EXECUTION
@@ -286,12 +321,12 @@ try:
         print "Neighbour node ID, IP: " + str(neighbour) + ", " + neighbour_address
 
         # Give all nodes sufficient time to wake up, stops working 100% around 2-3 seconds on VM
-        time.sleep(5.)
+        #time.sleep(node_id)
         # Init leader election
-        thread = Thread(target=start_election)
-        thread.daemon=True
-        thread.start()
-
+        if node_id == 1:
+        	thread = Thread(target=start_election)
+        	thread.daemon=True
+        	thread.start()
 
         try:
             run(app, host=vessel_list[str(node_id)], port=port)
