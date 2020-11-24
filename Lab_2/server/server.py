@@ -119,26 +119,37 @@ try:
     def client_add_received():
         '''Adds a new element to the board
         Called directly when a user is doing a POST request on /board'''
-        global board, node_id, id_number, leader_node_ip
+        global board, node_id, id_number, leader_node_ip, leader_node
 
         try:
             new_entry = request.forms.get('entry')
-            
-            #add_new_element_to_store(id_number, new_entry)
-            
-            # Propagate action to all other nodes:
-            #thread = Thread(target=propagate_to_vessels,
-            #                args=('/propagate/ADD/' + str(id_number), {'entry': new_entry}, 'POST'))
-            #thread.daemon = True
-            #thread.start()
-            print str(leader_node_ip)
-            #thread = Thread(target=contact_vessel, 
-            #				args=(leader_node_ip, '/leader/add', {'entry' : new_entry}, 'POST'))
-            #thread.deamon = True
-            #thread.start()
-            requests.post('http://{}{}'.format(leader_node_ip, 'leader/add'), data=new_entry)
-            
-            return True
+
+            print "leader:" + str(leader_node)
+
+            print "My ID:" + str(node_id)
+
+            # Leader should add directly to board.
+            if str(leader_node) == str(node_id):
+
+            	add_new_element_to_store(id_number, new_entry)
+
+            	thread = Thread(target=propagate_to_vessels, args=('/propagate/ADD/' + str(id_number), {'entry': new_entry}, 'POST'))
+            	thread.daemon = True
+            	thread.start()
+            	id_number = id_number + 1
+
+            # Send add request to leader
+            else:
+                
+	            print str(leader_node_ip)
+
+	            thread = Thread(target=contact_vessel, args=(leader_node_ip, '/leader/add', {'entry': new_entry}, 'POST'))
+	            thread.deamon = True
+	            thread.start()
+	            
+	            
+	    return True
+
         except Exception as e:
             print e
         return False
@@ -146,7 +157,9 @@ try:
     
     @app.post('/board/<element_id:int>/')
     def client_action_received(element_id):
-        global board, node_id
+        global board, node_id, leader_node_ip
+
+        # TODO: Modify or delete directly if leader
         
         print "You receive an element"
         print "id is ", node_id
@@ -160,15 +173,18 @@ try:
         
         #call either delete or modify
         if delete_option == "0":
-        	modify_element_in_store(element_id, entry, False)
+
+        	contact_vessel(leader_node_ip, '/leader/modify/' + str(element_id), {'entry': entry}, 'POST')
+
         elif delete_option == "1":
+
         	delete_element_from_store(element_id, False)
         
         #Propage action to all other nodes
-        thread = Thread(target=propagate_to_vessels,
-                            args=('/propagate/DELETEorMODIFY/' + str(element_id), {'entry': entry, 'delete': delete_option}, 'POST'))
-        thread.daemon = True
-        thread.start()
+        #thread = Thread(target=propagate_to_vessels,
+        #                    args=('/propagate/DELETEorMODIFY/' + str(element_id), {'entry': entry, 'delete': delete_option}, 'POST'))
+        #thread.daemon = True
+        #thread.start()
 
     #With this function you handle requests from other nodes like add modify or delete
     @app.post('/propagate/<action>/<element_id>')
@@ -198,16 +214,34 @@ try:
         	elif delete_option == "1":
         		delete_element_from_store(element_id, True)
  	
- 	@app.post('/leader/add')
+ 	#Leader reveives an add request, then propagate this add.
+ 	@app.post('/leader/test')
  	def leader_add():
  		global id_number
+ 		print "Leader received add"
 
  		new_entry = request.forms.get('entry')
- 		print "Leder received is:" + action
- 		add_new_element_to_store(id_number, entry)
+ 		
+ 		add_new_element_to_store(id_number, new_entry, True)
  		
         propagate_to_vessels('/propagate/ADD/' + str(id_number), {'entry': new_entry}, 'POST')
         id_number = id_number + 1
+
+    @app.post('/leader/modify/<element_id>')
+    def leader_modify(element_id):
+    	print "Leader received modify"
+
+    	entry = request.forms.get('entry')
+    	delete_option = 0
+
+    	modify_element_in_store(element_id, entry, True)
+
+    	# Progagate modified entry to other nodes
+    	
+        #thread = Thread(target=propagate_to_vessels,
+        #                    args=('/propagate/DELETEorMODIFY/' + str(element_id), {'entry': entry, 'delete': delete_option}, 'POST'))
+        #thread.daemon = True
+        #thread.start()
 
     # ------------------------------------------------------------------------------------------------------
     # DISTRIBUTED COMMUNICATIONS FUNCTIONS
@@ -284,9 +318,9 @@ try:
     			
     @app.post('/leader_prop/leader')
     def leader_propagation():
-    	global leader_node_ip
-
-    	leader_node_ip = '10.0.1.{}'.format(request.forms.get('leader'))
+    	global leader_node_ip, leader_node
+    	leader_node = request.forms.get('leader')
+    	leader_node_ip = '10.1.0.{}'.format(leader_node)
     	print 'Leader IP:' + str(leader_node_ip)
 
 
