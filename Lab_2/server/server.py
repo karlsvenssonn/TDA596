@@ -140,18 +140,17 @@ try:
             	thread.start()
             	id_number = id_number + 1
 
+            	return True
+
             # Send add request to leader
             else:
                 
-                #print "Send request to leader on IP:" + str(leader_node_ip)
-	            
 	            thread = Thread(target=contact_vessel,
 	            				args=(str(leader_node_ip), "/leader/add", {'entry': new_entry}))
 	            thread.daemon = True
 	            thread.start()
-	            
-	            
-	    return True
+
+	            return True
 
         except Exception as e:
             print e
@@ -162,10 +161,9 @@ try:
     def client_action_received(element_id):
         global board, node_id, leader_node_ip, leader_node
 
-        
-        
         print "Modify or Delete"
         print "id is ", node_id
+
         # Get the entry from the HTTP body
         entry = request.forms.get('entry')
         
@@ -173,7 +171,7 @@ try:
 	    #0 = modify, 1 = delete
 	    
         print "the delete option is ", delete_option
-
+        # Leader should modify or delete directly to board and propagate the change to others.
         if str(leader_node) == str(node_id):
 
         	if delete_option == "0":
@@ -211,13 +209,12 @@ try:
 	        	thread.daemon = True
 	        	thread.start()
 
-
-	        	#contact_vessel(leader_node_ip, '/leader/delete/' + str(element_id), {'entry': entry}, 'POST')
         
     #With this function you handle requests from other nodes like add modify or delete
     @app.post('/propagate/<action>/<element_id>')
     def propagation_received(action, element_id):
     	global id_number
+
 	    #get entry from http body
         entry = request.forms.get('entry')
 
@@ -227,8 +224,6 @@ try:
         # If propagation action received is ADD, add new element to board and increment id_number
         if action == "ADD":
       	 	add_new_element_to_store(element_id, entry, True)
-        	#id_number = int(element_id) +1
-
 
         # If propagation action received is MODIFYorDELETE
         # Get delete_option value and act accordingly
@@ -242,12 +237,13 @@ try:
         	elif delete_option == "1":
         		delete_element_from_store(element_id, True)
  	
- 	#Leader reveives an add request, then propagate this add.
-
+ 	# Leader receives an add request from a node.
+ 	# Leader adds this entry to the board, then propagates this to all other nodes
     @app.post('/leader/add')
     def leader_add():
         global id_number
         print "Leader received add"
+        
         try:
             new_entry = request.forms.get('entry')
             
@@ -257,10 +253,8 @@ try:
                             args=("/propagate/ADD/" + str(id_number), {'entry': new_entry}))
             thread.daemon = True
             thread.start()
-
+            # Increment ID for the next entry
             id_number = id_number + 1
-
-            
 
             return True
 
@@ -268,13 +262,13 @@ try:
             print e
         return False
         
-
+    # Leader receives a modify request from a node.
+    # Leader deletes this from the board and then propagates this to all other nodes
     @app.post('/leader/modify/<element_id>')
     def leader_modify(element_id):
     	print "Leader received modify"
 
     	try:
-
     		entry = request.forms.get('entry')
     		delete_option = 0
 
@@ -291,13 +285,13 @@ try:
         except Exception as e:
         	print e
         return False
-    
+    # Leader receives a delete request from a node.
+    # Leader deletes this from the board and then propragates this to all other nodes
     @app.post('/leader/delete/<element_id>')
     def leader_delete(element_id):
         print "Leader received delete"
 
         try:
-
         	entry = request.forms.get('entry')
         	delete_option = 1
 
@@ -321,6 +315,7 @@ try:
     def contact_vessel(vessel_ip, path, payload=None, req='POST'):
         # Try to contact another server (vessel) through a POST or GET, once
         success = False
+        
         try:
             if 'POST' in req:
                 res = requests.post('http://{}{}'.format(vessel_ip, path), data=payload)
@@ -360,12 +355,13 @@ try:
         # TODO: Use contact_vessel funtion instead with POST as arg.
 		requests.post('http://{}{}'.format(neighbour_address, path), data=random_id_list)
 
+	# This function is only run by the node that starts the election
     @app.post('/election')
     def leader_elect():
-    	global node_id, node_id_random, neighbour_address, leader_node
+    	global node_id, node_id_random, neighbour_address, leader_node, leader_node_ip
+    	
     	received = dict(request.forms)
     	path = "/election"
-
 
     	if str(node_id) not in received:
     		received[str(node_id)] = str(node_id_random)
@@ -375,23 +371,28 @@ try:
             # TODO: Use contact_vessel funtion instead with POST as arg.
     		requests.post('http://{}{}'.format(neighbour_address, path), data=received)
     	
-    	# Replace 6 with number of args to clean up code, not sure how this works if a node crash, maybe count all nodes?
-    	#if len(savedlist) == 6:
+    	# If node_id is in the received list, one rounde in the ring is completed and a leader can be elected.
     	elif str(node_id) in received:
     		
     		print "My list of currently received ID's: \n" + str(received)
+    		# Elect leader with the highest random ID
     		leader_node = max(received, key = received.get)
 
     		print "Leader node is: " + (leader_node) + " and value is " + (received[leader_node])
-    		
+    		# Save IP address to leader node
+    		leader_node_ip = '10.1.0.{}'.format(leader_node)
+
     		thread = Thread(target = propagate_to_vessels, args=('/leader_prop/leader', {'leader':leader_node}))
     		thread.daemon = True
     		thread.start()
-    			
+    
+    # Propagate the elected leader to other nodes			
     @app.post('/leader_prop/leader')
     def leader_propagation():
     	global leader_node_ip, leader_node
+    	# Get the elected leader
     	leader_node = request.forms.get('leader')
+    	# Save the IP address to leader node
     	leader_node_ip = '10.1.0.{}'.format(leader_node)
     	print 'Leader IP:' + str(leader_node_ip)
 
