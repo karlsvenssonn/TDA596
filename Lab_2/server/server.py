@@ -58,6 +58,7 @@ try:
         except Exception as e:
             print e
         return success
+        
 
     #This function will modify an element on the board
     def modify_element_in_store(entry_sequence, modified_element, is_propagated_call = False):
@@ -128,7 +129,7 @@ try:
 
             print "My ID:" + str(node_id)
 
-            # Leader should add directly to board.
+            # Leader should add directly to board and propagate to others
             if str(leader_node) == str(node_id):
 
             	add_new_element_to_store(id_number, new_entry)
@@ -178,14 +179,8 @@ try:
 
         elif delete_option == "1":
 
-        	delete_element_from_store(element_id, False)
+        	contact_vessel(leader_node_ip, '/leader/delete/' + str(element_id), {'entry': entry}, 'POST')
         
-        #Propage action to all other nodes
-        #thread = Thread(target=propagate_to_vessels,
-        #                    args=('/propagate/DELETEorMODIFY/' + str(element_id), {'entry': entry, 'delete': delete_option}, 'POST'))
-        #thread.daemon = True
-        #thread.start()
-
     #With this function you handle requests from other nodes like add modify or delete
     @app.post('/propagate/<action>/<element_id>')
     def propagation_received(action, element_id):
@@ -199,7 +194,7 @@ try:
         # If propagation action received is ADD, add new element to board and increment id_number
         if action == "ADD":
       	 	add_new_element_to_store(element_id, entry, True)
-        	id_number = int(element_id) +1
+        	#id_number = int(element_id) +1
 
 
         # If propagation action received is MODIFYorDELETE
@@ -215,7 +210,7 @@ try:
         		delete_element_from_store(element_id, True)
  	
  	#Leader reveives an add request, then propagate this add.
- 	@app.post('/leader/test')
+ 	@app.post('/leader/add')
  	def leader_add():
  		global id_number
  		print "Leader received add"
@@ -237,11 +232,23 @@ try:
     	modify_element_in_store(element_id, entry, True)
 
     	# Progagate modified entry to other nodes
-    	
-        #thread = Thread(target=propagate_to_vessels,
-        #                    args=('/propagate/DELETEorMODIFY/' + str(element_id), {'entry': entry, 'delete': delete_option}, 'POST'))
-        #thread.daemon = True
-        #thread.start()
+    	thread = Thread(target=propagate_to_vessels, args=('/propagate/DELETEorMODIFY/' + str(element_id), {'entry': entry, 'delete': delete_option}, 'POST'))
+        thread.daemon = True
+        thread.start()
+
+    @app.post('/leader/delete/<element_id>')
+    def leader_delete(element_id):
+        print "Leader received delete"
+
+        entry = request.forms.get('entry')
+        delete_option = 1
+
+        delete_element_from_store(element_id, True)
+
+        # Propagate deleted entry to other nodes
+        thread = Thread(target=propagate_to_vessels, args('/propagate/DELETEorMODIFY/' + str(element_id), {'entry': entry, 'delete': delete_option}, 'POST'))
+        thread.deamon = True
+        thread.start()
 
     # ------------------------------------------------------------------------------------------------------
     # DISTRIBUTED COMMUNICATIONS FUNCTIONS
