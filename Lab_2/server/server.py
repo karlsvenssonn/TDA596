@@ -145,7 +145,7 @@ try:
 	            print str(leader_node_ip)
 
 	            thread = Thread(target=contact_vessel, args=(leader_node_ip, '/leader/add', {'entry': new_entry}, 'POST'))
-	            thread.deamon = True
+	            thread.daemon = True
 	            thread.start()
 	            
 	            
@@ -158,7 +158,7 @@ try:
     
     @app.post('/board/<element_id:int>/')
     def client_action_received(element_id):
-        global board, node_id, leader_node_ip
+        global board, node_id, leader_node_ip, leader_node
 
         # TODO: Modify or delete directly if leader
         
@@ -171,15 +171,42 @@ try:
 	    #0 = modify, 1 = delete
 	    
         print "the delete option is ", delete_option
+
+        if str(leader_node) == str(node_id):
+
+        	if delete_option == "0":
+
+        		# Modify in leader board
+        		modify_element_in_store(element_id, entry)
+
+        	elif delete_option == "1":
+
+        		# Delete in leader board
+        		delete_element_from_store(element_id)
+        		
+
+        	# Propagate to all other nodes
+        	thread = Thread(target=propagate_to_vessels, args=('/propagate/DELETEorMODIFY/' + str(element_id), {'entry': entry, 'delete': delete_option}, 'POST'))
+        	thread.daemon = True
+        	thread.start()
+
+        else:
         
-        #call either delete or modify
-        if delete_option == "0":
+	        #call either delete or modify
+	        if delete_option == "0":
 
-        	contact_vessel(leader_node_ip, '/leader/modify/' + str(element_id), {'entry': entry}, 'POST')
+	        	thread = Thread(target=contact_vessel, args=(leader_node_ip, '/leader/modify/' + str(element_id), {'entry': entry}, 'POST'))
+	        	thread.daemon = True
+	        	thread.start()
 
-        elif delete_option == "1":
+	        elif delete_option == "1":
 
-        	contact_vessel(leader_node_ip, '/leader/delete/' + str(element_id), {'entry': entry}, 'POST')
+	        	thread = Thread(target=contact_vessel, args=(leader_node_ip, '/leader/delete/' + str(element_id), {'entry': entry}, 'POST'))
+	        	thread.daemon = True
+	        	thread.start()
+
+
+	        	#contact_vessel(leader_node_ip, '/leader/delete/' + str(element_id), {'entry': entry}, 'POST')
         
     #With this function you handle requests from other nodes like add modify or delete
     @app.post('/propagate/<action>/<element_id>')
@@ -215,12 +242,18 @@ try:
  		global id_number
  		print "Leader received add"
 
- 		new_entry = request.forms.get('entry')
+ 		add_entry = request.forms.get('entry')
  		
- 		add_new_element_to_store(id_number, new_entry, True)
+ 		add_new_element_to_store(id_number, add_entry, True)
  		
-        propagate_to_vessels('/propagate/ADD/' + str(id_number), {'entry': new_entry}, 'POST')
+        thread = Thread(target=propagate_to_vessels, args=('/propagate/ADD/' + str(id_number), {'entry': add_entry}, 'POST'))
+        thread.daemon = True
+        thread.start()
+
         id_number = id_number + 1
+
+        #propagate_to_vessels('/propagate/ADD/' + str(id_number), {'entry': new_entry}, 'POST')
+        
 
     @app.post('/leader/modify/<element_id>')
     def leader_modify(element_id):
@@ -235,7 +268,7 @@ try:
     	thread = Thread(target=propagate_to_vessels, args=('/propagate/DELETEorMODIFY/' + str(element_id), {'entry': entry, 'delete': delete_option}, 'POST'))
         thread.daemon = True
         thread.start()
-
+    
     @app.post('/leader/delete/<element_id>')
     def leader_delete(element_id):
         print "Leader received delete"
@@ -246,10 +279,10 @@ try:
         delete_element_from_store(element_id, True)
 
         # Propagate deleted entry to other nodes
-        thread = Thread(target=propagate_to_vessels, args('/propagate/DELETEorMODIFY/' + str(element_id), {'entry': entry, 'delete': delete_option}, 'POST'))
-        thread.deamon = True
+        thread = Thread(target=propagate_to_vessels, args=('/propagate/DELETEorMODIFY/' + str(element_id), {'entry': entry, 'delete': delete_option}, 'POST'))
+       	thread.daemon = True
         thread.start()
-
+	
     # ------------------------------------------------------------------------------------------------------
     # DISTRIBUTED COMMUNICATIONS FUNCTIONS
     # ------------------------------------------------------------------------------------------------------
@@ -320,7 +353,7 @@ try:
     		print "Leader node is: " + (leader_node) + " and value is " + (received[leader_node])
     		
     		thread = Thread(target = propagate_to_vessels, args=('/leader_prop/leader', {'leader':leader_node}))
-    		thread.deamon = True
+    		thread.daemon = True
     		thread.start()
     			
     @app.post('/leader_prop/leader')
