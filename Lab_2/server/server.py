@@ -140,8 +140,6 @@ try:
             	thread.start()
             	id_number = id_number + 1
 
-            	return True
-
             # Send add request to leader
             else:
                 
@@ -150,13 +148,10 @@ try:
 	            thread.daemon = True
 	            thread.start()
 
-	            return True
-
         except Exception as e:
             print e
-        return False
 
-    
+
     @app.post('/board/<element_id:int>/')
     def client_action_received(element_id):
         global board, node_id, leader_node_ip, leader_node
@@ -263,11 +258,9 @@ try:
             # Increment ID for the next entry
             id_number = id_number + 1
 
-            return True
-
         except Exception as e:
             print e
-        return False
+
         
     # Leader receives a modify request from a node.
     # Leader deletes this from the board and then propagates this to all other nodes
@@ -287,11 +280,9 @@ try:
         	thread.daemon = True
         	thread.start()
 
-        	return True
-
         except Exception as e:
         	print e
-        return False
+ 
 
     # Leader receives a delete request from a node.
     # Leader deletes this from the board and then propragates this to all other nodes
@@ -311,11 +302,8 @@ try:
        		thread.daemon = True
         	thread.start()
 
-        	return True
-
         except Exception as e:
         	print e
-        return False
 	
     # ------------------------------------------------------------------------------------------------------
     # DISTRIBUTED COMMUNICATIONS FUNCTIONS
