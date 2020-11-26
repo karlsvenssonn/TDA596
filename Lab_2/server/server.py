@@ -387,7 +387,7 @@ try:
     	if str(node_id) not in received:
     		received[str(node_id)] = str(node_id_random)
 
-    		print "Added:" + str(node_id) + "Sent to:" + str(neighbour_address)
+    		print "Added node_id: " + str(node_id) + " and sent dictionary to: " + str(neighbour_address)
     		print "My list of currently received ID's: \n" + str(received)
 
     		requests.post('http://{}{}'.format(neighbour_address, path), data=received)
