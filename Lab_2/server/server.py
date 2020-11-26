@@ -352,25 +352,24 @@ try:
     # ------------------------------------------------------------------------------------------------------
     # LEADER ELECTION
     # ------------------------------------------------------------------------------------------------------
-    # This leader election assumes a ring topology and that all nodes knows it's right side neighbour.
+    # This leader election assumes a ring topology and that all nodes knows its right side neighbor.
     # A node starts a new election by calling "start_election". We wait for all nodes to become available.
-    # The node that started the election will contact it's neighbour and send a dictionary that contains the nodes random id.
-    # In the "leader_elect" funtion, the neighour receives the list from its neighbour.
-    # It checks if it's node_id is present in this dictionary.
-    # If the node doesn't exist id att itself with node_id as key and it's random id as value. Then sends the dictionary to it's neighbour.
+    # The node that started the election will contact its neighbor and send a dictionary that contains the nodes_id and random_id.
+    # In the "leader_elect" function, the neighbor receives the list from its neighbour.
+    # It checks if its node_id is present in this dictionary.
+    # If the node doesn't exist it att itself with node_id as key and its random id as value. Then sends the dictionary to its neighbour.
     # 
-    # If node_id exists in the received list, it means tat the dictionarty has made one round in the ring and all nodes have added
-    # it's random id. Now we are ready to elect a leader!
+    # If node_id exists in the received list, it means that the dictionarty has made one round in the ring and all nodes have added
+    # its random id. Now we are ready to elect a leader!
     # We check the dictionart and picks the key(node_id) that is associated with the highest random id.
     # This node is elected leader. We then start a propagation to all nodes, to tell them who the new leader is.
-    # All nodes saves the IP address to the leader.
+    # All nodes save the IP address to the leader.
 	# ------------------------------------------------------------------------------------------------------
     def start_election():
 		global neighbour_address, random_id_list
 
 		path = "/election"
 		# Should allow node 1 to wake up first, then node 2,3,4,5,6 etc.
-		time.sleep(node_id)
 		# Contact neighbour to start the election.
 		thread = Thread(target=contact_vessel, args=(neighbour_address, path, random_id_list))
 		thread.daemon = True
