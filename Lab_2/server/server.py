@@ -355,13 +355,13 @@ try:
     # This leader election assumes a ring topology and that all nodes knows its right side neighbor.
     # A node starts a new election by calling "start_election". We wait for all nodes to become available.
     # The node that started the election will contact its neighbor and send a dictionary that contains the nodes_id and random_id.
-    # In the "leader_elect" function, the neighbor receives the list from its neighbour.
+    # In the "leader_elect" function, the neighbor receives the list from its left neighbour.
     # It checks if its node_id is present in this dictionary.
-    # If the node doesn't exist it att itself with node_id as key and its random id as value. Then sends the dictionary to its neighbour.
+    # If the node doesn't exist it add itself with node_id as a key and its random id as value. Then sends the dictionary to its right neighbour.
     # 
     # If node_id exists in the received list, it means that the dictionarty has made one round in the ring and all nodes have added
-    # its random id. Now we are ready to elect a leader!
-    # We check the dictionart and picks the key(node_id) that is associated with the highest random id.
+    # its random id. We are now ready to elect a leader!
+    # We check the dictionary and picks the key(node_id) that is associated with the highest value(random id).
     # This node is elected leader. We then start a propagation to all nodes, to tell them who the new leader is.
     # All nodes save the IP address to the leader.
 	# ------------------------------------------------------------------------------------------------------
