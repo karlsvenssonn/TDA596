@@ -191,7 +191,7 @@ try:
         	thread.daemon = True
         	thread.start()
 
-        # Send request to leader
+        # Send modify or delete request to leader
         else:
         
 	        #call either delete or modify
@@ -236,7 +236,12 @@ try:
 
         	elif delete_option == "1":
         		delete_element_from_store(element_id, True)
- 	
+ 
+
+    # ------------------------------------------------------------------------------------------------------
+    # Leader functions
+    # ------------------------------------------------------------------------------------------------------
+
  	# Leader receives an add request from a node.
  	# Leader adds this entry to the board, then propagates this to all other nodes
     @app.post('/leader/add')
@@ -249,10 +254,12 @@ try:
             
             add_new_element_to_store(id_number, new_entry, True)
             
+            # Prapagate the added entry to other nodes
             thread = Thread(target=propagate_to_vessels,
                             args=("/propagate/ADD/" + str(id_number), {'entry': new_entry}))
             thread.daemon = True
             thread.start()
+
             # Increment ID for the next entry
             id_number = id_number + 1
 
@@ -285,6 +292,7 @@ try:
         except Exception as e:
         	print e
         return False
+
     # Leader receives a delete request from a node.
     # Leader deletes this from the board and then propragates this to all other nodes
     @app.post('/leader/delete/<element_id>')
@@ -344,16 +352,29 @@ try:
     # ------------------------------------------------------------------------------------------------------
     # LEADER ELECTION
     # ------------------------------------------------------------------------------------------------------
-    # Assume ring topology, check in vessel_list, node_id+1 mod vessel_list.size.
-    
+    # This leader election assumes a ring topology and that all nodes knows it's right side neighbour.
+    # A node starts a new election by calling "start_election". We wait for all nodes to become available.
+    # The node that started the election will contact it's neighbour and send a dictionary that contains the nodes random id.
+    # In the "leader_elect" funtion, the neighour receives the list from its neighbour.
+    # It checks if it's node_id is present in this dictionary.
+    # If the node doesn't exist id att itself with node_id as key and it's random id as value. Then sends the dictionary to it's neighbour.
+    # 
+    # If node_id exists in the received list, it means tat the dictionarty has made one round in the ring and all nodes have added
+    # it's random id. Now we are ready to elect a leader!
+    # We check the dictionart and picks the key(node_id) that is associated with the highest random id.
+    # This node is elected leader. We then start a propagation to all nodes, to tell them who the new leader is.
+    # All nodes saves the IP address to the leader.
+	# ------------------------------------------------------------------------------------------------------
     def start_election():
 		global neighbour_address, random_id_list
 
 		path = "/election"
 		# Should allow node 1 to wake up first, then node 2,3,4,5,6 etc.
 		time.sleep(node_id)
-        # TODO: Use contact_vessel funtion instead with POST as arg.
-		requests.post('http://{}{}'.format(neighbour_address, path), data=random_id_list)
+		# Contact neighbour to start the election.
+		thread = Thread(target=contact_vessel, args=(neighbour_address, path, random_id_list))
+		thread.daemon = True
+		thread.start()
 
 	# This function is only run by the node that starts the election
     @app.post('/election')
@@ -368,7 +389,7 @@ try:
 
     		print "Added:" + str(node_id) + "Sent to:" + str(neighbour_address)
     		print "My list of currently received ID's: \n" + str(received)
-            # TODO: Use contact_vessel funtion instead with POST as arg.
+
     		requests.post('http://{}{}'.format(neighbour_address, path), data=received)
     	
     	# If node_id is in the received list, one rounde in the ring is completed and a leader can be elected.
