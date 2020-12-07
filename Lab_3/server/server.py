@@ -3,7 +3,7 @@
 # TDA596 - Lab 1
 # server/server.py
 # Input: Node_ID total_number_of_ID
-# Students: Socrates, Plato, Aristotle
+# Students: Fawzi Aiboud Nygren, Karl Svensson
 # ------------------------------------------------------------------------------------------------------
 import traceback
 import time
@@ -11,9 +11,10 @@ import argparse
 from threading import Thread
 from bottle import Bottle, run, request, template
 import requests
+import json
 
 class Server:
-    def __init__(self, host, port, node_list, node_id):
+    def __init__(self, host, port, node_list, node_id, vector_clock):
         self._host = host
         self._port = port
         self._app = Bottle()
@@ -21,6 +22,9 @@ class Server:
         self.board = {0: "Welcome to Distributed Systems Course"}
         self.node_list = node_list
         self.node_id = node_id
+        self.vector_clock = vector_clock
+        
+        
 
     def _route(self):
         self._app.route('/', method="GET", callback=self.index)
@@ -40,9 +44,8 @@ class Server:
     # GET '/'
     def index(self):
         return template('server/index.tpl', board_title='Node {}'.format(self.node_id),
-                        board_dict={"0": self.board, }.iteritems(), members_name_string='Socrates, '
-                                                                                           'Plato, '
-                                                                                           'Aristotle' )
+                        board_dict={"0": self.board, }.iteritems(), members_name_string='Karl Svensson, '
+                                                                                           'Fawzi Aiboud Nygren')
 
     # GET '/board'
     def get_board(self):
@@ -59,9 +62,12 @@ class Server:
             element_id = len(self.board)  # you need to generate a entry number
             self.add_new_element_to_store(element_id, new_entry)
 
+            self.vector_clock[self.node_id] = self.vector_clock[self.node_id] + 1
+            print "My Vector clock value: " + str(self.vector_clock[self.node_id])
+            print self.vector_clock
             thread = Thread(target=self.propagate_to_nodes,
                             args=('/propagate/ADD/' + str(element_id),
-                                  {'entry': new_entry},
+                                  {'entry': new_entry, 'VC': json.dumps(self.vector_clock),'sending_node':self.node_id},
                                   'POST'))
 
             thread.daemon = True
@@ -74,10 +80,11 @@ class Server:
 
     # POST '/board/<element_id:int>/'
     def client_action_received(self, element_id):
-        print "You receive an element"
+        print "You receive an action"
         print "id is ", self.node_id
         try:
             # Get the entry from the HTTP body
+            
             entry = request.forms.get('entry')
 
             delete_option = request.forms.get('delete')
@@ -89,9 +96,10 @@ class Server:
             if delete_option == '0':
                 self.modify_element_in_store(element_id, entry)
                 propagate_action = 'MODIFY'
-
             elif delete_option == '1':
+                
                 print 'Element id is: ', element_id
+
                 self.delete_element_from_store(element_id)
                 propagate_action = 'DELETE'
             else:
@@ -99,10 +107,13 @@ class Server:
 
             print propagate_action
 
+            self.vector_clock[self.node_id] = self.vector_clock[self.node_id] + 1
+            print "My Vector clock value:" + str(self.vector_clock[self.node_id])
+
             # propage to other nodes
             thread = Thread(target=self.propagate_to_nodes,
                             args=('/propagate/' + propagate_action + '/' + str(element_id),
-                                  {'entry': entry},
+                                  {'entry': entry, 'VC':json.dumps(self.vector_clock), 'sending_node':self.node_id},
                                   'POST'))
             thread.daemon = True
             thread.start()
@@ -116,19 +127,46 @@ class Server:
     # POST '/propagate/<action>/<element_id:int>'
     def propagation_received(self, action, element_id):
         # get entry from http body
+
+        self.vector_clock[self.node_id] = self.vector_clock[self.node_id] + 1
+        print "My Vector clock value:" + str(self.vector_clock[self.node_id])
+
         entry = request.forms.get('entry')
+        # Get the senders node_id
+        sending_node = request.forms.get('sending_node')
+        # Get the senders veckor_clock list
+        VC = json.loads(request.forms.get('VC'))
+        print str(sending_node)
+        
+        # Update your vector_clock list.
+        
+        print self.vector_clock[int(sending_node)]
+        print VC[str(sending_node)]
+
         print "the action is", action
+        print "The Element id is" +str(element_id)
 
         # Handle requests
         if action == 'ADD':
             # Add the board entry
             self.add_new_element_to_store(element_id, entry)
+            self.vector_clock[int(sending_node)] = VC[str(sending_node)]
+
         elif action == 'MODIFY':
             # Modify the board entry
-            self.modify_element_in_store(element_id, entry)
+
+            if self.vector_clock[self.node_id] == VC[str(sending_node)]:
+            	print "Concurrent modify"
+            
+            else:
+
+            	self.modify_element_in_store(element_id, entry)
+            	self.vector_clock[int(sending_node)] = VC[str(sending_node)]
+
         elif action == 'DELETE':
             # Delete the entry from the board
             self.delete_element_from_store(element_id)
+            self.vector_clock[int(sending_node)] = VC[str(sending_node)]
 
     # ------------------------------------------------------------------------------------------------------
     # COMMUNICATION FUNCTIONS
@@ -192,7 +230,15 @@ class Server:
         try:
             # If it does not exist we count it as a successful delete as well
             if entry_sequence in self.board:
+                
                 del self.board[entry_sequence]
+                '''
+                for i in range(entry_sequence+1, len(self.board)+1):
+                	new_key= i-1
+                	old_key = i
+                	self.board[i-1] = self.board.pop(i)
+				'''
+				
             success = True
         except Exception as e:
             print e
@@ -212,12 +258,17 @@ def main():
     args = parser.parse_args()
     node_id = args.nid
     node_list = {}
+    vector_clock = dict()
+    
     # We need to write the other nodes IP, based on the knowledge of their number
     for i in range(1, args.nbv + 1):
         node_list[str(i)] = '10.1.0.{}'.format(str(i))
+        vector_clock[i] = 0
+        
+
 
     try:
-        server = Server(host=node_list[str(node_id)], port=80, node_list = node_list, node_id = node_id)
+        server = Server(host=node_list[str(node_id)], port=80, node_list = node_list, node_id = node_id, vector_clock = vector_clock)
         server.start()
 
     except Exception as e:
