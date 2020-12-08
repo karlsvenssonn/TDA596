@@ -14,7 +14,7 @@ import requests
 import json
 
 class Server:
-    def __init__(self, host, port, node_list, node_id, vector_clock):
+    def __init__(self, host, port, node_list, node_id, vector_clock, roll_back):
         self._host = host
         self._port = port
         self._app = Bottle()
@@ -23,6 +23,7 @@ class Server:
         self.node_list = node_list
         self.node_id = node_id
         self.vector_clock = vector_clock
+        self.roll_back = roll_back
         
         
 
@@ -57,14 +58,16 @@ class Server:
     def client_add_received(self):
         """Adds a new element to the board
         Called directly when a user is doing a POST request on /board"""
+        # Increment vector clock by 1
+        self.vector_clock[self.node_id] = self.vector_clock[self.node_id] + 1
+        print self.vector_clock
+
         try:
+
             new_entry = request.forms.get('entry')
             element_id = len(self.board)  # you need to generate a entry number
             self.add_new_element_to_store(element_id, new_entry)
 
-            self.vector_clock[self.node_id] = self.vector_clock[self.node_id] + 1
-            print "My Vector clock value: " + str(self.vector_clock[self.node_id])
-            print self.vector_clock
             thread = Thread(target=self.propagate_to_nodes,
                             args=('/propagate/ADD/' + str(element_id),
                                   {'entry': new_entry, 'VC': json.dumps(self.vector_clock),'sending_node':self.node_id},
@@ -82,9 +85,12 @@ class Server:
     def client_action_received(self, element_id):
         print "You receive an action"
         print "id is ", self.node_id
+        # Increment vector clock by 1
+        self.vector_clock[self.node_id] = self.vector_clock[self.node_id] + 1
+        print "Clock incremented"
+
         try:
             # Get the entry from the HTTP body
-            
             entry = request.forms.get('entry')
 
             delete_option = request.forms.get('delete')
@@ -107,9 +113,6 @@ class Server:
 
             print propagate_action
 
-            self.vector_clock[self.node_id] = self.vector_clock[self.node_id] + 1
-            print "My Vector clock value:" + str(self.vector_clock[self.node_id])
-
             # propage to other nodes
             thread = Thread(target=self.propagate_to_nodes,
                             args=('/propagate/' + propagate_action + '/' + str(element_id),
@@ -121,28 +124,38 @@ class Server:
         except Exception as e:
             print e
         return False
+    
 
 
     # With this function you handle requests from other nodes like add modify or delete
     # POST '/propagate/<action>/<element_id:int>'
     def propagation_received(self, action, element_id):
-        # get entry from http body
-
-        self.vector_clock[self.node_id] = self.vector_clock[self.node_id] + 1
-        print "My Vector clock value:" + str(self.vector_clock[self.node_id])
-
+        
+        # Get entry
         entry = request.forms.get('entry')
+
         # Get the senders node_id
         sending_node = request.forms.get('sending_node')
+        print "Received message from: " + str(sending_node)
+
         # Get the senders veckor_clock list
         VC = json.loads(request.forms.get('VC'))
-        print str(sending_node)
-        
-        # Update your vector_clock list.
-        
-        print self.vector_clock[int(sending_node)]
-        print VC[str(sending_node)]
 
+        res = self.compare_vector(self.vector_clock, VC, sending_node)
+        print "Compare result: " + str(res)
+        if res == -1:
+        	print "CONCURRENT"
+
+        # Merge local vector_clock with received vector_clock
+        for i in self.vector_clock:
+        	self.vector_clock[i] = max(self.vector_clock[i], VC[str(i)])
+
+        print "My merged vector clock : " + str(self.vector_clock)
+
+        # Increment local vector clock by 1
+        self.vector_clock[self.node_id] = self.vector_clock[self.node_id] + 1
+        print "Click incremented"
+       
         print "the action is", action
         print "The Element id is" +str(element_id)
 
@@ -150,24 +163,59 @@ class Server:
         if action == 'ADD':
             # Add the board entry
             self.add_new_element_to_store(element_id, entry)
-            self.vector_clock[int(sending_node)] = VC[str(sending_node)]
+            
 
         elif action == 'MODIFY':
             # Modify the board entry
 
-            if self.vector_clock[self.node_id] == VC[str(sending_node)]:
-            	print "Concurrent modify"
-            
-            else:
+            # Concurrent modifi:
 
-            	self.modify_element_in_store(element_id, entry)
-            	self.vector_clock[int(sending_node)] = VC[str(sending_node)]
+			self.modify_element_in_store(element_id, entry)
+            	
 
         elif action == 'DELETE':
             # Delete the entry from the board
             self.delete_element_from_store(element_id)
-            self.vector_clock[int(sending_node)] = VC[str(sending_node)]
 
+        
+        
+
+
+    def compare_vector(self, local_clock, received_clock, sending_node):
+    	local_first = 0
+    	received_first = 0
+
+    	'''
+    	Question:
+   		When to compare the two vectors_lists?
+   		Add when received prop and add this prop?
+   		How to act after compare?
+    	'''
+
+    	print "My vector list: " + str(local_clock)
+    	print "Received list: " + str(received_clock)
+
+    	for value in local_clock:
+    		if local_clock[value] >= received_clock[str(value)]:
+    			local_first = local_first + 1
+    				
+    		if local_clock[value] <= received_clock[str(value)]:
+    			received_first = received_first + 1
+
+    	print ">=: " + str(local_first)
+    	print "<=: " + str(received_first)
+
+    	if local_first == len(local_clock):
+    		return 1
+
+    	elif received_first == len(local_clock):
+    		return 0
+
+    	else:
+
+    		return -1
+
+		
     # ------------------------------------------------------------------------------------------------------
     # COMMUNICATION FUNCTIONS
     # ------------------------------------------------------------------------------------------------------
@@ -207,9 +255,13 @@ class Server:
 
     def add_new_element_to_store(self, entry_sequence, element):
         success = False
+        
+        # Increment vector clock by 1
+        #self.vector_clock[self.node_id] = self.vector_clock[self.node_id] + 1
+
         try:
             if entry_sequence not in self.board:
-                self.board[entry_sequence] = element
+            	self.board[entry_sequence] = element
                 success = True
         except Exception as e:
             print e
@@ -217,8 +269,13 @@ class Server:
     
     def modify_element_in_store(self, entry_sequence, modified_element):
         success = False
+
+        # Increment vector clock by 1
+        #self.vector_clock[self.node_id] = self.vector_clock[self.node_id] + 1
+
         try:
             if entry_sequence in self.board:
+            	self.roll_back = self.board[entry_sequence]
                 self.board[entry_sequence] = modified_element
             success = True
         except Exception as e:
@@ -227,10 +284,14 @@ class Server:
 
     def delete_element_from_store(self, entry_sequence):
         success = False
+        # Increment vector clock by 1
+        #self.vector_clock[self.node_id] = self.vector_clock[self.node_id] + 1
+        
         try:
             # If it does not exist we count it as a successful delete as well
             if entry_sequence in self.board:
-                
+                # Increment vector clock by 1
+       	 		#self.vector_clock[self.node_id] = self.vector_clock[self.node_id] + 1
                 del self.board[entry_sequence]
                 '''
                 for i in range(entry_sequence+1, len(self.board)+1):
@@ -259,6 +320,7 @@ def main():
     node_id = args.nid
     node_list = {}
     vector_clock = dict()
+    roll_back = ""
     
     # We need to write the other nodes IP, based on the knowledge of their number
     for i in range(1, args.nbv + 1):
@@ -268,7 +330,7 @@ def main():
 
 
     try:
-        server = Server(host=node_list[str(node_id)], port=80, node_list = node_list, node_id = node_id, vector_clock = vector_clock)
+        server = Server(host=node_list[str(node_id)], port=80, node_list = node_list, node_id = node_id, vector_clock = vector_clock, roll_back = roll_back)
         server.start()
 
     except Exception as e:
