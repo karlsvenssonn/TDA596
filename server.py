@@ -11,10 +11,9 @@ import argparse
 from threading import Thread
 from bottle import Bottle, run, request, template
 import requests
-import json
 
 class Server:
-    def __init__(self, host, port, node_list, node_id, VC, delete_log, modify_log):
+    def __init__(self, host, port, node_list, node_id, LC, delete_log, modify_log):
         self._host = host
         self._port = port
         self._app = Bottle()
@@ -22,9 +21,10 @@ class Server:
         self.board = {0: "Welcome to Distributed Systems Course"}
         self.node_list = node_list
         self.node_id = node_id
-        self.VC = VC
+        self.LC = LC
         self.delete_log = delete_log
         self.modify_log = modify_log
+        
 
 
 
@@ -34,7 +34,6 @@ class Server:
         self._app.route('/board', method="POST", callback=self.client_add_received)
         self._app.route('/board/<element_id:int>/', method="POST", callback=self.client_action_received)
         self._app.route('/propagate/<action>/<element_id:int>', method="POST", callback=self.propagation_received)
-
 
 
     def start(self):
@@ -61,19 +60,23 @@ class Server:
     def client_add_received(self):
         """Adds a new element to the board
         Called directly when a user is doing a POST request on /board"""
-        
-        # Increment clock
-        self.VC[self.node_id] = self.VC[self.node_id] + 1
+        self.LC = self.LC + 1
+        print "Logical clock value: " + str(self.LC)
         try:
         	
             new_entry = request.forms.get('entry')
             element_id = len(self.board)  # you need to generate a entry number
-            self.add_new_element_to_store(element_id, new_entry)
+            version = (1, self.node_id)
+            #time = datetime.now()
 
-            msg = {'entry': new_entry, 'vc': self.VC, 'sending_node': self.node_id}
+
+
+            self.add_new_element_to_store(element_id, new_entry, version)
 
             thread = Thread(target=self.propagate_to_nodes,
-                            args=('/propagate/ADD/' + str(element_id), json.dumps(msg), 'POST'))
+                            args=('/propagate/ADD/' + str(element_id),
+                                  {'entry': new_entry, 'TS' : str(self.LC), "version": version},
+                                  'POST'))
 
             thread.daemon = True
             thread.start()
@@ -87,23 +90,24 @@ class Server:
     def client_action_received(self, element_id):
         print "You receive an element"
         print "id is ", self.node_id
-        
-        # Increment clock
-        self.VC[self.node_id] = self.VC[self.node_id] + 1
+        self.LC = self.LC + 1
+        print "Logical clock value: " + str(self.LC)
         try:
 
             # Get the entry from the HTTP body
             entry = request.forms.get('entry')
 
             delete_option = request.forms.get('delete')
+            version = request.forms.get('version')
             # 0 = modify, 1 = delete
+
             print "the delete option is ", delete_option
-
-            msg = {'entry': entry, 'vc': self.VC, 'sending_node': self.node_id}
-
 
             # call either delete or modify
             if delete_option == '0':
+
+
+            	print version
                 self.modify_element_in_store(element_id, entry)
                 propagate_action = 'MODIFY'
 
@@ -118,7 +122,9 @@ class Server:
 
             # propage to other nodes
             thread = Thread(target=self.propagate_to_nodes,
-                            args=('/propagate/' + propagate_action + '/' + str(element_id), json.dumps(msg), 'POST'))
+                            args=('/propagate/' + propagate_action + '/' + str(element_id),
+                                  {'entry': entry, 'TS': str(self.LC)},
+                                  'POST'))
             thread.daemon = True
             thread.start()
             return '<h1>Successfully ' + propagate_action + ' entry</h1>'
@@ -130,55 +136,27 @@ class Server:
     # With this function you handle requests from other nodes like add modify or delete
     # POST '/propagate/<action>/<element_id:int>'
     def propagation_received(self, action, element_id):
-
-    	# Decode message form body
-    	msg = json.loads(request.body.read())
-
-    	entry = msg['entry']
-    	received_vc = msg['vc']
-    	sending_node = int(msg['sending_node'])
-    	greater = 0
-    	less = 0
-    	concurrent = 0
-
-    	print "Message received from: " + str(sending_node)
-    	print entry
-
-    	# Increment local vector clock cuz event occured
-    	self.VC[self.node_id] = self.VC[self.node_id] + 1
-
-    	# Merge local vector clock with received
-    	for i in self.VC:
-    		self.VC[i] = max(self.VC[i], received_vc[str(i)])
-
-    	# Compare of events are concurrent, might not work?
-    	for i in self.VC:
-    		if self.VC[i] > received_vc[str(i)]:
-    			greater = 1
-    		elif self.VC[i] < received_vc[str(i)]:
-    			less = 1
-
-    	if (greater == 1) and (less == 1):
-    		concurrent = 1
-    		print "Concurrent events"
-
-    
-    	print self.VC
-
+        # get entry from http body
+        entry = request.forms.get('entry')
         print "the action is", action
+
+        TS = int(request.forms.get('TS'))
+        version = request.forms.get('version')
+
+        self.LC = max(self.LC, TS) + 1
+
+        print "Logical clock value: " + str(self.LC)
 
         # Handle requests
         if action == 'ADD':
             # Add the board entry
-            self.add_new_element_to_store(element_id, entry)
+            self.add_new_element_to_store(element_id, entry, version)
         elif action == 'MODIFY':
             # Modify the board entry
             self.modify_element_in_store(element_id, entry)
         elif action == 'DELETE':
             # Delete the entry from the board
             self.delete_element_from_store(element_id)
-
-
 
     # ------------------------------------------------------------------------------------------------------
     # COMMUNICATION FUNCTIONS
@@ -217,12 +195,15 @@ class Server:
     # BOARD FUNCTIONS
     # ------------------------------------------------------------------------------------------------------
 
-    def add_new_element_to_store(self, entry_sequence, element):
+    def add_new_element_to_store(self, entry_sequence, element, version):
         success = False
         try:
             if entry_sequence not in self.board:
-                self.board[entry_sequence] = element
+                self.board[entry_sequence] = (version, element)
+                
                 success = True
+
+
         except Exception as e:
             print e
         return success
@@ -264,14 +245,15 @@ def main():
     node_list = {}
     delete_log = {}
     modify_log = {}
-    VC = {}
+    
+
+    LC = 0
     # We need to write the other nodes IP, based on the knowledge of their number
     for i in range(1, args.nbv + 1):
         node_list[str(i)] = '10.1.0.{}'.format(str(i))
-        VC[i] = 0
 
     try:
-        server = Server(host=node_list[str(node_id)], port=80, node_list = node_list, node_id = node_id, VC = VC, delete_log = delete_log, modify_log = modify_log)
+        server = Server(host=node_list[str(node_id)], port=80, node_list = node_list, node_id = node_id, LC = LC, delete_log = delete_log, modify_log = modify_log)
         server.start()
 
     except Exception as e:
