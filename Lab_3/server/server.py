@@ -70,6 +70,7 @@ class Server:
             self.add_new_element_to_store(element_id, new_entry)
 
             msg = {'entry': new_entry, 'LC': self.LC, 'VC': self.VC, 'node_id': self.node_id, 'action': "ADD"}
+            
 
             thread = Thread(target=self.propagate_to_nodes,
                             args=('/propagate/ADD/' + str(element_id), json.dumps(msg), 'POST'))
@@ -170,43 +171,43 @@ class Server:
             self.delete_element_from_store(element_id)
 
 
-    def compareClocks(self, clockOne, clockTwo):
-    	oneAfterTwo = False
-    	twoAfterOne = False
+    def compareClocks(self, local_vector, received_vector):
+    	local_after_received = False
+    	received_after_local = False
     	concurrent = False
 
-    	print "My VC on compare: " + str(clockOne)
-    	print "Received VC on compare: " + str(clockTwo)
+    	print "My VC on compare: " + str(local_vector)
+    	print "Received VC on compare: " + str(received_vector)
 
-    	for i in clockOne:
-    		if clockOne[i] > clockTwo[str(i)]:
-    			oneAfterTwo = True
+    	for i in local_vector:
+    		if local_vector[i] > received_vector[str(i)]:
+    			local_after_sent = True
 
-    		if clockTwo[str(i)] > clockOne[i]:
-    			twoAfterOne = True 
+    		if received_vector[str(i)] > local_vector[i]:
+    			received_after_local = True 
 
-    		if oneAfterTwo and twoAfterOne:
+    		if local_after_received and received_after_local:
     			concurrent = True
     			ordering = "concurrent"
     			break
 
-    	if oneAfterTwo and (not twoAfterOne):
-    		ordering = "after"
+    	if local_after_received and (not received_after_local):
+    		ordering = "happend_after"
 
-    	elif (not oneAfterTwo) and twoAfterOne:
-    		ordering = "before"
+    	elif (not local_after_received) and received_after_local:
+    		ordering = "happend_before"
 
-    	elif (not oneAfterTwo) and (not twoAfterOne) and (not concurrent):
+    	elif (not local_after_received) and (not received_after_local) and (not concurrent):
     		ordering = "identical"
 
     	return ordering
 
-    def mergeClocks(self, clockOne, clockTwo):
+    def mergeClocks(self, local_vector, received_vector):
 
-    	for i in clockOne:
-    		clockOne[i] = max(clockOne[i], clockTwo[str(i)])
+    	for i in local_vector:
+    		local_vector[i] = max(local_vector[i], received_vector[str(i)])
 
-    	return clockOne
+    	return local_vector
 
 
     def incVC(self):
