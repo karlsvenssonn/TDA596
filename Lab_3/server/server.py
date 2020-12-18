@@ -72,6 +72,7 @@ class Server:
             # Update the board according to the queue
             self.handle_queue()
 
+            time.sleep(2)
             # Propagate to other nodes
             thread = Thread(target=self.propagate_to_nodes,
                             args=('/propagate/ADD/' + str(element_id), json.dumps(msg), 'POST'))
@@ -100,11 +101,16 @@ class Server:
 
             # Call either delete or modify
             if delete_option == '0':
-                # Add the modify action to the queue
-                self.queue[element_id]['entry'] = entry
-                # Update board according to the queue
-            	self.handle_queue()
-                propagate_action = 'MODIFY'
+                
+                if self.queue[element_id]['entry'] != "deleted_element":
+
+                    # Add the modify action to the queue
+                    self.queue[element_id]['entry'] = entry
+                    # Update board according to the queue
+            	    self.handle_queue()
+                    propagate_action = 'MODIFY'
+                else:
+                    print "Marked for delete, no modify"
 
             elif delete_option == '1':
                 print 'Element id is: ', element_id
@@ -119,6 +125,7 @@ class Server:
 
             print propagate_action
 
+            time.sleep(2)
             # Create message for propagation
             msg = {'entry': entry, 'LC': self.LC, 'node_id': self.node_id, 'action': delete_option}
             # Propage to other nodes
@@ -161,10 +168,14 @@ class Server:
         	self.handle_queue()
 
         elif action == 'MODIFY':
-            # Add received modify to queue
-            self.queue[element_id]['entry'] = entry
-            # Update board acording to queue
-            self.handle_queue()
+            
+            if self.queue[element_id]['entry'] != "deleted_element":
+                # Add received modify to queue
+                self.queue[element_id]['entry'] = entry
+                # Update board acording to queue
+                self.handle_queue()
+            else:
+                print "Marked for delete, no modify"
 
         elif action == 'DELETE':
             # Mark received delete in queue
