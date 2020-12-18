@@ -12,19 +12,21 @@ from threading import Thread
 from bottle import Bottle, run, request, template
 import requests
 import json
+from operator import itemgetter
+
 
 class Server:
-    def __init__(self, host, port, node_list, node_id, VC, LC, seq):
+    def __init__(self, host, port, node_list, node_id, LC, queue):
         self._host = host
         self._port = port
         self._app = Bottle()
         self._route()
-        self.board = {0: "Welcome to Distributed Systems Course"}
+        self.board = {0: "Welcome"}
         self.node_list = node_list
         self.node_id = node_id
         self.LC = LC
-        self.VC = VC
-        self.seq = seq
+        self.queue = queue
+        
 
     def _route(self):
         self._app.route('/', method="GET", callback=self.index)
@@ -44,9 +46,7 @@ class Server:
     # GET '/'
     def index(self):
         return template('server/index.tpl', board_title='Node {}'.format(self.node_id),
-                        board_dict=sorted({"0": self.board, }.iteritems()), members_name_string='Socrates, '
-                                                                                           'Plato, '
-                                                                                           'Aristotle')
+                        board_dict=sorted({"0": self.board, }.iteritems()), members_name_string='Fawzi Aiboud Nygren, ''Karl Svensson')
 
     # GET '/board'
     def get_board(self):
@@ -59,19 +59,20 @@ class Server:
         """Adds a new element to the board
         Called directly when a user is doing a POST request on /board"""
         try:
-            # Increment logical clock
+            # Increment logical clock because new event
             self.LC = self.LC + 1
-            # Increment vector clock
-            self.incVC()
-            
+            # Get entry from the HTTP body
             new_entry = request.forms.get('entry')
-            self.seq = self.seq + 1
-            element_id = self.seq  # you need to generate a entry number
-            self.add_new_element_to_store(element_id, new_entry)
-
-            msg = {'entry': new_entry, 'LC': self.LC, 'VC': self.VC, 'node_id': self.node_id, 'action': "ADD"}
+            element_id = len(self.board)  # you need to generate a entry number
             
+            # Create message to send in propagation
+            msg = {'entry': new_entry, 'LC': self.LC, 'node_id': self.node_id, 'action': "ADD"}
+            # Add the new entry to the queue
+            self.queue.append(msg)
+            # Update the board according to the queue
+            self.handle_queue()
 
+            # Propagate to other nodes
             thread = Thread(target=self.propagate_to_nodes,
                             args=('/propagate/ADD/' + str(element_id), json.dumps(msg), 'POST'))
 
@@ -88,36 +89,39 @@ class Server:
         print "You receive an element"
         print "id is ", self.node_id
         try:
-            # Increment logical clock
+            # Increment logical clock because new event
             self.LC = self.LC + 1
-            # Increment vector clock
-            self.incVC()
-            
             # Get the entry from the HTTP body
             entry = request.forms.get('entry')
-
+            # Get option from HTTP body
             delete_option = request.forms.get('delete')
             # 0 = modify, 1 = delete
-
             print "the delete option is ", delete_option
 
-            # call either delete or modify
+            # Call either delete or modify
             if delete_option == '0':
-                self.modify_element_in_store(element_id, entry)
+                # Add the modify action to the queue
+                self.queue[element_id]['entry'] = entry
+                # Update board according to the queue
+            	self.handle_queue()
                 propagate_action = 'MODIFY'
 
             elif delete_option == '1':
                 print 'Element id is: ', element_id
-                self.delete_element_from_store(element_id)
+                # Add delete action to queue
+                self.queue[element_id]['entry'] = "deleted_element"
+                # Update board according to the queue
+            	self.handle_queue()
                 propagate_action = 'DELETE'
+
             else:
                 raise Exception("Unaccepted delete option")
 
             print propagate_action
 
-            msg = {'entry': new_entry, 'LC': self.LC, 'VC': self.VC, 'node_id': self.node_id, 'action': delete_option}
-
-            # propage to other nodes
+            # Create message for propagation
+            msg = {'entry': entry, 'LC': self.LC, 'node_id': self.node_id, 'action': delete_option}
+            # Propage to other nodes
             thread = Thread(target=self.propagate_to_nodes,
                             args=('/propagate/' + propagate_action + '/' + str(element_id), json.dumps(msg),'POST'))
             thread.daemon = True
@@ -132,87 +136,71 @@ class Server:
     # POST '/propagate/<action>/<element_id:int>'
     def propagation_received(self, action, element_id):
         
-        print "the action is", action
+        print "The action received is: ", action
 
         # Get data from propagation msg
         received = json.loads(request.body.read())
         # Assign received data
         entry = received['entry']
-        received_lc = int(received['LC'])
-        received_vc = received['VC']
         sending_node = received['node_id']
-
-
-        # Merge clocks
-        self.VC = self.mergeClocks(self.VC, received_vc)
-
-        # Compare clocks
-        comp = self.compareClocks(self.VC, received_vc)
-
+        RC = int(received['LC'])
         
-        # Increment local VC
-        self.incVC()
+        # Print information
+        print "Message received from: " + str(sending_node) + " with entry: " + str(entry)
 
-        print "Compare result: " + comp
-        print "My VC after merge: " + str(self.VC)
-
-        
+        # Update logical clock with max value of local clock and received clock
+        self.LC = max(self.LC, RC)
+        # Increment logical clock because new event
+        self.LC = self.LC + 1
 
         # Handle requests
         if action == 'ADD':
-            # Add the board entry
-            self.seq = self.seq + 1
-            self.add_new_element_to_store(element_id, entry)
+        	# Add received entry to queue
+        	self.queue.append(received)
+        	# Update board acording to queue
+        	self.handle_queue()
+
         elif action == 'MODIFY':
-            # Modify the board entry
-            self.modify_element_in_store(element_id, entry)
+            # Add received modify to queue
+            self.queue[element_id]['entry'] = entry
+            # Update board acording to queue
+            self.handle_queue()
+
         elif action == 'DELETE':
-            # Delete the entry from the board
-            self.delete_element_from_store(element_id)
+            # Mark received delete in queue
+            self.queue[element_id]['entry'] = "deleted_element"
+            # Update board acording to queue
+            self.handle_queue()
 
+    # ------------------------------------------------------------------------------------------------------
+    # QUEUE OPERATIONS
+    # ------------------------------------------------------------------------------------------------------
+    
+    # This function updates the local board according to the queue
+    def handle_queue(self):
+    	
+        to_delete = []
 
-    def compareClocks(self, local_vector, received_vector):
-    	local_after_received = False
-    	received_after_local = False
-    	concurrent = False
+        # Sort the queue by logical clock value for each entry.
+        # If entries have equal logical clocl value, prioritize by node id (lowest first).
+    	self.queue.sort(key=lambda k:(k['LC'], k['node_id']))
+        # Print the current queue
+    	print "My queue: " + json.dumps(self.queue, indent=4)
+        # Add all elements in the queue to the local board
+    	for i in range(len(self.queue)):
+    		self.add_new_element_to_store(i, self.queue[i]['entry'])
 
-    	print "My VC on compare: " + str(local_vector)
-    	print "Received VC on compare: " + str(received_vector)
-
-    	for i in local_vector:
-    		if local_vector[i] > received_vector[str(i)]:
-    			local_after_sent = True
-
-    		if received_vector[str(i)] > local_vector[i]:
-    			received_after_local = True 
-
-    		if local_after_received and received_after_local:
-    			concurrent = True
-    			ordering = "concurrent"
-    			break
-
-    	if local_after_received and (not received_after_local):
-    		ordering = "happend_after"
-
-    	elif (not local_after_received) and received_after_local:
-    		ordering = "happend_before"
-
-    	elif (not local_after_received) and (not received_after_local) and (not concurrent):
-    		ordering = "identical"
-
-    	return ordering
-
-    def mergeClocks(self, local_vector, received_vector):
-
-    	for i in local_vector:
-    		local_vector[i] = max(local_vector[i], received_vector[str(i)])
-
-    	return local_vector
-
-
-    def incVC(self):
-
-    	self.VC[self.node_id] = self.VC[self.node_id] + 1
+    	# Add elements marked for deletion to a list.
+    	for i in self.board:
+    		if self.board[i] is "deleted_element":
+    			to_delete.append(i)
+    	# Print element id's that are marked for deletion
+    	print "Elements marked as deleted:" + str(to_delete)
+        # If there is element id's marked for deletion.
+        # Delete these elements from the local board.
+    	if to_delete:
+    		for i in range(len(to_delete)):
+    			self.delete_element_from_store(to_delete[i])
 
     # ------------------------------------------------------------------------------------------------------
     # COMMUNICATION FUNCTIONS
@@ -242,35 +230,27 @@ class Server:
 
         for node_id, node_ip in self.node_list.items():
             if int(node_id) != self.node_id:  # don't propagate to yourself
+
                 success = self.contact_single_node(node_ip, path, payload, req)
                 if not success:
                     print "\n\nCould not contact node {}\n\n".format(self.node_id)
-
 
     # ------------------------------------------------------------------------------------------------------
     # BOARD FUNCTIONS
     # ------------------------------------------------------------------------------------------------------
 
+    # Adds a element to the local board
     def add_new_element_to_store(self, entry_sequence, element):
         success = False
         try:
-            if entry_sequence not in self.board:
-                self.board[entry_sequence] = element
-                success = True
-        except Exception as e:
-            print e
-        return success
-    
-    def modify_element_in_store(self, entry_sequence, modified_element):
-        success = False
-        try:
-            if entry_sequence in self.board:
-                self.board[entry_sequence] = modified_element
+            print "Adding: " + element + " with ID: " + str(entry_sequence)
+            self.board[entry_sequence] = element
             success = True
         except Exception as e:
             print e
         return success
-
+    
+    # Deletes a element from the local board
     def delete_element_from_store(self, entry_sequence):
         success = False
         try:
@@ -281,8 +261,6 @@ class Server:
         except Exception as e:
             print e
         return success
-
-
 
 # ------------------------------------------------------------------------------------------------------
 # EXECUTION
@@ -296,16 +274,18 @@ def main():
     args = parser.parse_args()
     node_id = args.nid
     node_list = {}
-    VC = {}
+    # Create queue
+    queue = []
+    # Init logical clock
     LC = 0
-    seq = 0
+    
     # We need to write the other nodes IP, based on the knowledge of their number
     for i in range(1, args.nbv + 1):
         node_list[str(i)] = '10.1.0.{}'.format(str(i))
-        VC[i] = 0
-
+        
     try:
-        server = Server(host=node_list[str(node_id)], port=80, node_list = node_list, node_id = node_id, VC = VC, LC = LC, seq = seq)
+        server = Server(host=node_list[str(node_id)], port=80, node_list = node_list,
+        	node_id = node_id, LC = LC, queue = queue)
         server.start()
 
     except Exception as e:
