@@ -111,27 +111,81 @@ try:
     
     @app.post('/vote/<vote_type>')
     def vote_type(vote_type):
-        global result, result_vector, node_id
+        global result, result_vector, node_id, is_byzantine, args
         print "My vote is: " + str(vote_type)
 
-        if vote_type is "attack" or "retreat":
+        if ((vote_type == "attack" or vote_type == "retreat") and not is_byzantine):
+
+            if vote_type == "attack":
+            	vote_type = "True"
+            else:
+            	vote_type = "False"
 
             result_vector[str(node_id)] = vote_type
             print str(result_vector)
-            propagate_to_vessels('/merge', {'node_id':node_id, 'vote_type': vote_type})
+            thread = Thread(target=propagate_to_vessels, args=('/merge', {'node_id': node_id, 'vote_type': vote_type}))
+            thread.daemon = True
+            thread.start()
+
+        elif vote_type == "byzantine" and is_byzantine:
+        	
+            local = compute_byzantine_vote_round1(3, 4 , True)
+            print str(local)
+
+            index = 0
+            for i in range(0, args.nbv):
+
+            	if i+1 != node_id:
+            		ip = '10.1.0.{}'.format(str(i+1))
+            		thread = Thread(target=contact_vessel, args=(ip, '/merge', {'node_id': node_id, 'vote_type': local[index]}))
+            		thread.daemon = True
+            		thread.start()
+            		index += 1
+
+            	
+
+
+
 
     @app.post('/merge')
     def merge_votes():
-        global result_vector, node_id
+        global result_vector, node_id, vessel_list, is_byzantine, args
         result_vector[request.forms.get('node_id')] = request.forms.get('vote_type')
         count = 0
         for i in result_vector:
             if (i != node_id) and (result_vector[str(i)] != None):
                 count += 1
-                
-        if count == 3 and is_byzantine == True:
-            local = compute_byzantine_vote_round1(3, 4, True)
-            print str(local)
+        if count == len(vessel_list) and not is_byzantine:
+        	thread = Thread(target=propagate_to_vessels, args=('/collect_results', {'node_id':  node_id, 'vector': json.dumps(result_vector)}))
+        	thread.daemon = True
+        	thread.start()
+        
+        elif count == len(vessel_list) - 1 and is_byzantine:
+        	round2 = compute_byzantine_vote_round2(3, 4, True)
+        	print str(round2)
+        	index = 1
+        	for i in range(0, args.nbv):
+        		if i+1 != node_id:
+        			thread = Thread(target=contact_vessel, args=('10.1.0.{}'.format(str(i+1)), '/collect_results', {'node_id': node_id, 'vector': json.dumps(round2[index])}))
+        			thread.daemon = True
+        			thread.start()
+        			index += 1
+
+
+    @app.post('/collect_results')
+    def collect_results():
+    	global node_id, received_results
+    	sending_id = request.forms.get('node_id')
+    	received_vector = json.loads(request.forms.get('vector'))
+    	received_results[int(sending_id)] = received_vector
+    	print str(received_results)
+    	# Receive result_vector
+    	# Add this to the received_results dict
+
+    def final_result():
+    	global received_results
+
+
 
 
     @app.post('/board')
@@ -270,7 +324,7 @@ try:
     # EXECUTION
     # ------------------------------------------------------------------------------------------------------
     def main():
-        global vessel_list, node_id, app, result_vector
+        global vessel_list, node_id, app, result_vector, args, received_results
 
         port = 80
         parser = argparse.ArgumentParser(description='Your own implementation of the distributed blackboard')
@@ -280,6 +334,7 @@ try:
         node_id = args.nid
         vessel_list = dict()
         result_vector = dict()
+        received_results = dict()
         # We need to write the other vessels IP, based on the knowledge of their number
         for i in range(1, args.nbv+1):
             vessel_list[str(i)] = '10.1.0.{}'.format(str(i))

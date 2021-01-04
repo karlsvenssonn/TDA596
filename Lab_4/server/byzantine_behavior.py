@@ -32,11 +32,11 @@ def compute_byzantine_vote_round1(no_loyal,no_total,on_tie):
 #	in the form [[True,...],[False,...],...]
 def compute_byzantine_vote_round2(no_loyal,no_total,on_tie):
   
-  result_vectors=[]
-  for i in range(0,no_loyal):
+  result_vectors=dict()
+  for i in range(1,no_loyal + 1):
     if i%2==0:
-      result_vectors.append([on_tie]*no_total)
+      result_vectors[i] = ([on_tie]*no_total)
     else:
-      result_vectors.append([not on_tie]*no_total)
+      result_vectors[i] = ([not on_tie]*no_total)
   return result_vectors
 
