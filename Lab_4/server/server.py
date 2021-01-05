@@ -24,9 +24,11 @@ try:
     board = {0 : "Welcome to Distributed Systems Course"}
     #Init thhe first entry number
     id_number = 1
+    
 
     
-    result = "ATTACK"
+    result = ""
+    
     is_byzantine = False
     
     # ------------------------------------------------------------------------------------------------------
@@ -106,7 +108,7 @@ try:
     def vote_result():
         global result, result_vector
         print "RESULT GOES HERE"
-        return template('server/result_template.tpl', result=result, result_vector=result_vector)
+        return template('server/result_template.tpl', result=result, final_vector=final_vector)
     #------------------------------------------------------------------------------------------------------
     
     @app.post('/vote/<vote_type>')
@@ -121,7 +123,7 @@ try:
             else:
             	vote_type = "False"
 
-            result_vector[str(node_id)] = vote_type
+            result_vector[node_id - 1] = vote_type
             print str(result_vector)
             thread = Thread(target=propagate_to_vessels, args=('/merge', {'node_id': node_id, 'vote_type': vote_type}))
             thread.daemon = True
@@ -150,12 +152,13 @@ try:
     @app.post('/merge')
     def merge_votes():
         global result_vector, node_id, vessel_list, is_byzantine, args
-        result_vector[request.forms.get('node_id')] = request.forms.get('vote_type')
+        result_vector[int(request.forms.get('node_id')) - 1] = request.forms.get('vote_type')
         count = 0
-        for i in result_vector:
-            if (i != node_id) and (result_vector[str(i)] != None):
+        for i in range(0, len(result_vector)):
+            if (i + 1 != node_id) and (result_vector[i] != None):
                 count += 1
-        if count == len(vessel_list) and not is_byzantine:
+                print "Count is incremented to:" + str(count)
+        if count == len(vessel_list) - 1 and not is_byzantine:
         	thread = Thread(target=propagate_to_vessels, args=('/collect_results', {'node_id':  node_id, 'vector': json.dumps(result_vector)}))
         	thread.daemon = True
         	thread.start()
@@ -163,7 +166,7 @@ try:
         elif count == len(vessel_list) - 1 and is_byzantine:
         	round2 = compute_byzantine_vote_round2(3, 4, True)
         	print str(round2)
-        	index = 1
+        	index = 0
         	for i in range(0, args.nbv):
         		if i+1 != node_id:
         			thread = Thread(target=contact_vessel, args=('10.1.0.{}'.format(str(i+1)), '/collect_results', {'node_id': node_id, 'vector': json.dumps(round2[index])}))
@@ -178,14 +181,52 @@ try:
     	sending_id = request.forms.get('node_id')
     	received_vector = json.loads(request.forms.get('vector'))
     	received_results[int(sending_id)] = received_vector
+    	received_results[node_id] = result_vector
     	print str(received_results)
+    	if len(received_results) == 4:
+    		final_result_vector()
     	# Receive result_vector
     	# Add this to the received_results dict
 
-    def final_result():
-    	global received_results
+    def final_result_vector():
+    	global received_results, final_vector, result, res
+    	# Compare all vectors in received_result
+    	# Decide who is the Byzantine by checking vectors that differs from others, that index is byzantine
+    	# Ignore this votes and decide based on others.
+    	for i in range(0, len(vessel_list)):
+    		count_attack = 0
+    		count_retreat = 0
+    		for node, vector in received_results.iteritems():
+    			if vector[i] == "True":
+    				count_attack += 1
+    			if vector[i] == "False":
+    				count_retreat += 1
 
+    		if count_attack >= count_retreat:
+    			final_vector[i] = "True"
+    		else:
+    			final_vector[i] = "False"
 
+    	print "Final vector:" + str(final_vector)
+
+    	result = final_agreement(final_vector)
+    	res = str(final_vector)
+
+    def final_agreement(vector):
+
+    	attack = 0
+    	retreat = 0
+
+    	for i in vector:
+    		if vector[i] == "True":
+    			attack += 1
+    		if vector[i] == "False":
+    			retreat += 1
+
+    	if attack >= retreat:
+    		return "ATTACK!"
+    	else:
+    		return "RETREAT!"
 
 
     @app.post('/board')
@@ -324,7 +365,7 @@ try:
     # EXECUTION
     # ------------------------------------------------------------------------------------------------------
     def main():
-        global vessel_list, node_id, app, result_vector, args, received_results
+        global vessel_list, node_id, app, result_vector, args, received_results, final_vector
 
         port = 80
         parser = argparse.ArgumentParser(description='Your own implementation of the distributed blackboard')
@@ -333,12 +374,13 @@ try:
         args = parser.parse_args()
         node_id = args.nid
         vessel_list = dict()
-        result_vector = dict()
+        result_vector = list()
         received_results = dict()
+        final_vector = dict()
         # We need to write the other vessels IP, based on the knowledge of their number
         for i in range(1, args.nbv+1):
             vessel_list[str(i)] = '10.1.0.{}'.format(str(i))
-            result_vector[str(i)] = None
+            result_vector.append(None)
 
 
         if node_id == 1:

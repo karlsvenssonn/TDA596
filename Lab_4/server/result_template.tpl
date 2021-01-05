@@ -4,6 +4,6 @@
 </head>
 <body>
 	<p>Result: {{result}}</p>
-	<p>Result Vector: {{result_vector}}</p>
+	<p>Result Vector: {{final_vector}}</p>
 </body>
 </html>
