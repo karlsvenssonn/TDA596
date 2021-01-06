@@ -13,78 +13,14 @@ import argparse
 from threading import Thread
 import random
 from byzantine_behavior import *
-
 from bottle import Bottle, run, request, template
 import requests
 # ------------------------------------------------------------------------------------------------------
 try:
     app = Bottle()
-
-    #board stores all message on the system 
-    board = {0 : "Welcome to Distributed Systems Course"}
-    #Init thhe first entry number
-    id_number = 1
-    
-
-    
-    result = ""
-    
+    result = None
     is_byzantine = False
-    
-    # ------------------------------------------------------------------------------------------------------
-    # BOARD FUNCTIONS
-    # ------------------------------------------------------------------------------------------------------
-    
-    #This functions will add an new element
-    def add_new_element_to_store(entry_sequence, element, is_propagated_call=False):
-        global board, node_id
-        success = False
-
-        #If this is a propagated call, typecast the reveicedstring entry_sequence top an int.
-        if is_propagated_call:
-        	entry_sequence = int(entry_sequence)
-
-        try:
-           if entry_sequence not in board:
-                board[entry_sequence] = element
-                success = True
-        except Exception as e:
-            print e
-        return success
-
-    #This function will modify an element on the board
-    def modify_element_in_store(entry_sequence, modified_element, is_propagated_call = False):
-        global board, node_id
-        success = False
-
-        #If this is a propagated call, typecast the reveicedstring entry_sequence top an int.
-        if is_propagated_call:
-        	entry_sequence = int(entry_sequence)
-
-        try:
-            if entry_sequence in board:
-            	board[entry_sequence] = modified_element
-            	success = True
-        except Exception as e:
-            print e
-        return success
-
-    #This function will delete an element from the board
-    def delete_element_from_store(entry_sequence, is_propagated_call = False):
-        global board, node_id
-        success = False
-
-        #If this is a propagated call, typecast the reveicedstring entry_sequence top an int.
-        if is_propagated_call:
-        	entry_sequence = int(entry_sequence)
-
-        try:
-            if entry_sequence in board:
-            	del board[entry_sequence]
-            	success = True
-        except Exception as e:
-            print e
-        return success
+    board = {0: ""}
 
     # ------------------------------------------------------------------------------------------------------
     # ROUTES
@@ -96,24 +32,19 @@ try:
     def index():
         global board, node_id
         return template('server/index.tpl', board_title='Vessel {}'.format(node_id),
-                board_dict=sorted({"0":board,}.iteritems()), members_name_string='YOUR NAME')
+                board_dict=sorted({"0":board,}.iteritems()), members_name_string='Fawzi Aiboud Nygren, Karl Svensson')
 
-    @app.get('/board')
-    def get_board():
-        global board, node_id
-        print board
-        return template('server/boardcontents_template.tpl',board_title='Vessel {}'.format(node_id), board_dict=sorted(board.iteritems()))
-    
     @app.get('/vote/result')
     def vote_result():
         global result, result_vector
-        print "RESULT GOES HERE"
         return template('server/result_template.tpl', result=result, final_vector=final_vector)
     #------------------------------------------------------------------------------------------------------
     
+    # if honest, get vote from html request and add to result vector. Then send vote to all other nodes.
+    # if byzantine, run first round and send the generated votes to all other nodes.
     @app.post('/vote/<vote_type>')
     def vote_type(vote_type):
-        global result, result_vector, node_id, is_byzantine, args
+        global result, result_vector, node_id, is_byzantine, total_no
         print "My vote is: " + str(vote_type)
 
         if ((vote_type == "attack" or vote_type == "retreat") and not is_byzantine):
@@ -124,18 +55,17 @@ try:
             	vote_type = "False"
 
             result_vector[node_id - 1] = vote_type
-            print str(result_vector)
             thread = Thread(target=propagate_to_vessels, args=('/merge', {'node_id': node_id, 'vote_type': vote_type}))
             thread.daemon = True
             thread.start()
 
         elif vote_type == "byzantine" and is_byzantine:
         	
-            local = compute_byzantine_vote_round1(3, 4 , True)
+            local = compute_byzantine_vote_round1(total_no-1, total_no , True)
             print str(local)
 
             index = 0
-            for i in range(0, args.nbv):
+            for i in range(0, total_no):
 
             	if i+1 != node_id:
             		ip = '10.1.0.{}'.format(str(i+1))
@@ -144,74 +74,75 @@ try:
             		thread.start()
             		index += 1
 
-            	
-
-
-
-
+    # Add received votes to the local result vector
+    # When all honest nodes has received all votes from others, send the result vector to other nodes
+    # If byzantine, run round 2 to create different result vectors and send to honest nodes.
     @app.post('/merge')
     def merge_votes():
-        global result_vector, node_id, vessel_list, is_byzantine, args
+        global result_vector, node_id, vessel_list, is_byzantine, total_no
         result_vector[int(request.forms.get('node_id')) - 1] = request.forms.get('vote_type')
-        count = 0
+        count = 1
         for i in range(0, len(result_vector)):
             if (i + 1 != node_id) and (result_vector[i] != None):
                 count += 1
                 print "Count is incremented to:" + str(count)
-        if count == len(vessel_list) - 1 and not is_byzantine:
+        if count == total_no and not is_byzantine:
         	thread = Thread(target=propagate_to_vessels, args=('/collect_results', {'node_id':  node_id, 'vector': json.dumps(result_vector)}))
         	thread.daemon = True
         	thread.start()
         
-        elif count == len(vessel_list) - 1 and is_byzantine:
-        	round2 = compute_byzantine_vote_round2(3, 4, True)
+        # Byzantine behavior
+        elif count == total_no and is_byzantine:
+        	round2 = compute_byzantine_vote_round2(total_no-1, total_no, True)
         	print str(round2)
         	index = 0
-        	for i in range(0, args.nbv):
+        	for i in range(0, total_no):
         		if i+1 != node_id:
         			thread = Thread(target=contact_vessel, args=('10.1.0.{}'.format(str(i+1)), '/collect_results', {'node_id': node_id, 'vector': json.dumps(round2[index])}))
         			thread.daemon = True
         			thread.start()
         			index += 1
 
-
+    # Receive all result vectors and add them to a dict containing all result vectors.
     @app.post('/collect_results')
     def collect_results():
-    	global node_id, received_results
+    	global node_id, received_results, total_no
     	sending_id = request.forms.get('node_id')
     	received_vector = json.loads(request.forms.get('vector'))
     	received_results[int(sending_id)] = received_vector
     	received_results[node_id] = result_vector
     	print str(received_results)
-    	if len(received_results) == 4:
+    	
+    	# When all the are collected, calculate final vector
+    	if len(received_results) == total_no:
     		final_result_vector()
-    	# Receive result_vector
-    	# Add this to the received_results dict
 
+    # Compare all collected vectors, check the i:th element on each vector and count attack or retreat.
+    # Add majority yo final vector.
     def final_result_vector():
-    	global received_results, final_vector, result, res
-    	# Compare all vectors in received_result
-    	# Decide who is the Byzantine by checking vectors that differs from others, that index is byzantine
-    	# Ignore this votes and decide based on others.
-    	for i in range(0, len(vessel_list)):
+    	global received_results, final_vector, result, node_id, total_no
+    	
+    	for i in range(0, total_no):
     		count_attack = 0
     		count_retreat = 0
     		for node, vector in received_results.iteritems():
-    			if vector[i] == "True":
+    			if vector[i] == "True" or vector[i] == True and i+1 != node_id:
     				count_attack += 1
-    			if vector[i] == "False":
+    			if vector[i] == "False" or vector[i]== False and i+1 != node_id:
     				count_retreat += 1
 
     		if count_attack >= count_retreat:
-    			final_vector[i] = "True"
+    			final_vector[i+1] = "True"
     		else:
-    			final_vector[i] = "False"
+    			final_vector[i+1] = "False"
 
+    	print "attack: " + str(count_attack)
+    	print "retreat: " + str(count_retreat)
     	print "Final vector:" + str(final_vector)
 
     	result = final_agreement(final_vector)
-    	res = str(final_vector)
-
+    	
+    # Check the final vector, count majority and decide final agreement.
     def final_agreement(vector):
 
     	attack = 0
@@ -228,97 +159,23 @@ try:
     	else:
     		return "RETREAT!"
 
-
-    @app.post('/board')
-    def client_add_received():
-        '''Adds a new element to the board
-        Called directly when a user is doing a POST request on /board'''
-        global board, node_id, id_number
-
-        try:
-            new_entry = request.forms.get('entry')
-            
-            add_new_element_to_store(id_number, new_entry)
-            
-            # Propagate action to all other nodes:
-            thread = Thread(target=propagate_to_vessels,
-                            args=('/propagate/ADD/' + str(id_number), {'entry': new_entry}, 'POST'))
-            thread.daemon = True
-            thread.start()
-            id_number = id_number +1
-            return True
-        except Exception as e:
-            print e
-        return False
-
-    
-    @app.post('/board/<element_id:int>/')
-    def client_action_received(element_id):
-        global board, node_id
-        
-        print "You receive an element"
-        print "id is ", node_id
-        # Get the entry from the HTTP body
-        entry = request.forms.get('entry')
-        
-        delete_option = request.forms.get('delete') 
-	    #0 = modify, 1 = delete
-	    
-        print "the delete option is ", delete_option
-        
-        #call either delete or modify
-        if delete_option == "0":
-        	modify_element_in_store(element_id, entry, False)
-        elif delete_option == "1":
-        	delete_element_from_store(element_id, False)
-        
-        #Propage action to all other nodes
-        thread = Thread(target=propagate_to_vessels,
-                            args=('/propagate/DELETEorMODIFY/' + str(element_id), {'entry': entry, 'delete': delete_option}, 'POST'))
-        thread.daemon = True
-        thread.start()
-
-    #With this function you handle requests from other nodes like add modify or delete
-    @app.post('/propagate/<action>/<element_id>')
-    def propagation_received(action, element_id):
-    	global id_number
-	    #get entry from http body
-        entry = request.forms.get('entry')
-
-        # Handle requests:
-        print "the action is", action
-        
-        # If propagation action received is ADD, add new element to board and increment id_number
-        if action == "ADD":
-      	 	add_new_element_to_store(element_id, entry, True)
-        	id_number = int(element_id) +1
-
-
-        # If propagation action received is MODIFYorDELETE
-        # Get delete_option value and act accordingly
-        else:
-        	delete_option = request.forms.get('delete')
-        	print "the delete option is ", delete_option
-
-        	if delete_option == "0":
-        		modify_element_in_store(element_id, entry, True)
-
-        	elif delete_option == "1":
-        		delete_element_from_store(element_id, True)
-    
     # ------------------------------------------------------------------------------------------------------
     # BYZANTINE SELECTION
     # ------------------------------------------------------------------------------------------------------
-    
+    # Function that init the byzantine selection, byzantine_id is a random number, if it matches to the node
+    # it is selected as a byzantine.
     def byzantine_select_init(byzantine_id):
         global node_id, is_byzantine
+        # If the node that inits the selection is selected byzantine
         if byzantine_id == node_id:
             print "I am byzantine"
             is_byzantine = True
-
+        # If the node that inits the selection is not selected as byzantine
+        # Contact other nodes with the byzantine id
         else:
             propagate_to_vessels('/byzantine_select/' + str(byzantine_id))
 
+    # Set byzantine node
     @app.post('/byzantine_select/<byzantine_id:int>')
     def byzantine_select(byzantine_id):
         global node_id, is_byzantine
@@ -327,9 +184,6 @@ try:
             print "I am byzantine"
             is_byzantine = True
 
-
-
- 
     # ------------------------------------------------------------------------------------------------------
     # DISTRIBUTED COMMUNICATIONS FUNCTIONS
     # ------------------------------------------------------------------------------------------------------
@@ -359,13 +213,12 @@ try:
                 success = contact_vessel(vessel_ip, path, payload, req)
                 if not success:
                     print "\n\nCould not contact vessel {}\n\n".format(vessel_id)
-
-        
+      
     # ------------------------------------------------------------------------------------------------------
     # EXECUTION
     # ------------------------------------------------------------------------------------------------------
     def main():
-        global vessel_list, node_id, app, result_vector, args, received_results, final_vector
+        global vessel_list, node_id, app, result_vector, args, received_results, final_vector, total_no
 
         port = 80
         parser = argparse.ArgumentParser(description='Your own implementation of the distributed blackboard')
@@ -382,17 +235,13 @@ try:
             vessel_list[str(i)] = '10.1.0.{}'.format(str(i))
             result_vector.append(None)
 
-
+        total_no = len(vessel_list)
+        print "Total nodes: " + str(total_no)
         if node_id == 1:
 
             byzantine_id = random.randint(1, args.nbv)
-            
-            #thread = Thread(target = byzantine_select_init, args = byzantine_id)
-            #thread.daemon = True
-            #thread.start()
             byzantine_select_init(byzantine_id)
         
-
         try:
             run(app, host=vessel_list[str(node_id)], port=port)
         except Exception as e:

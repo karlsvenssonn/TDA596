@@ -138,7 +138,7 @@ class Lab():
 # If the script was directly launched (and that should be the case!)
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run the distributed system. Launches a Mininet environment composed of multiple servers running your implementation of the lab, as well as a few clients. At startup, launches a firefox instance to test your blackboard.')
-    parser.add_argument('--servers', nargs='?', dest='nb_srv', default=4, type=int, help='The number of servers that should be running. If the number is even, the servers will be run in different regions. If the number is odd, all servers will be connected to the same switch.')
+    parser.add_argument('--servers', nargs='?', dest='nb_srv', default=3, type=int, help='The number of servers that should be running. If the number is even, the servers will be run in different regions. If the number is odd, all servers will be connected to the same switch.')
     parser.add_argument('--vessels', nargs='?', dest='pth_srv', default='server/server.py', help='The path to your server implementation.')
     args = parser.parse_args()
     nbOfRegions = 2 if args.nb_srv%2==0 else 1

@@ -13,7 +13,7 @@
 def compute_byzantine_vote_round1(no_loyal,no_total,on_tie):
 
   result_vote = []
-  for i in range(0,no_loyal):
+  for i in range(1 ,no_loyal + 1):
     if i%2==0:
       result_vote.append(not on_tie)
     else:
